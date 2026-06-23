@@ -1,0 +1,10 @@
+{
+  "name": "Biblioteca ULV",
+  "short_name": "Biblioteca ULV",
+  "description": "Aplicación de servicios bibliotecarios de la Universidad Linda Vista",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9f9f9",
+  "theme_color": "#06426a",
+  "icons": []
+}

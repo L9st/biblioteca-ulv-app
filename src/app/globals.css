@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f9f9f9;
+  --foreground: #171717;
+
+  --color-ulv-blue: #06426a;
+  --color-ulv-yellow: #fac600;
+  --color-ulv-bg: #f9f9f9;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-ulv-blue: var(--color-ulv-blue);
+  --color-ulv-yellow: var(--color-ulv-yellow);
+  --color-ulv-bg: var(--color-ulv-bg);
+
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
+}
+
+/* Opcional: si NO quieres modo oscuro, puedes borrar este bloque */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #f9f9f9;
+    --foreground: #171717;
+  }
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  text-decoration: none;
+}
+
+@keyframes ulv-toast-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -120%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes ulv-toast-exit {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, 80px);
+  }
+}
+
+.ulv-toast-enter {
+  animation: ulv-toast-enter 450ms ease-out forwards;
+}
+
+.ulv-toast-exit {
+  animation: ulv-toast-exit 500ms ease-in forwards;
+}
