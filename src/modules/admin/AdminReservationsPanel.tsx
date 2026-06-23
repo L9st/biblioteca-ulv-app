@@ -7,6 +7,7 @@ import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/servic
 import { getReservationStatusLabel, type ReservationStatus } from "@/services/reservations.service";
 import {
   getAdminReservableSpaces,
+  getAdminReservationsForDate,
   getAdminSpaceReservations,
   updateSpaceReservationStatus,
   type AdminSpaceReservation,
@@ -18,6 +19,7 @@ type PeriodFilter = "today" | "week" | "month" | "all";
 type StatusFilter = "all" | ReservationStatus;
 type Feedback = { type: "success" | "error"; message: string };
 type SpaceFilterOption = { id: string; name: string; library_id: string; libraries: { id: string; name: string; code: string } | null };
+type ActiveTab = "summary" | "reservations" | "calendar";
 
 function canAccess(role: AppUserRole) {
   return role === "librarian" || role === "admin" || role === "superadmin";
@@ -57,18 +59,43 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getStatusClassName(status: ReservationStatus) {
+  if (status === "approved") return "border-ulv-blue bg-ulv-blue/10 text-ulv-blue";
+  if (status === "pending") return "border-ulv-yellow bg-ulv-yellow/20 text-ulv-blue";
+  if (status === "rejected") return "border-red-200 bg-red-50 text-red-800";
+  if (status === "cancelled") return "border-slate-200 bg-slate-100 text-slate-700";
+  return "border-green-200 bg-green-50 text-green-800";
+}
+
 export function AdminReservationsPanel() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
   const [reservations, setReservations] = useState<AdminSpaceReservation[]>([]);
+  const [calendarReservations, setCalendarReservations] = useState<AdminSpaceReservation[]>([]);
   const [spaces, setSpaces] = useState<SpaceFilterOption[]>([]);
   const [libraryId, setLibraryId] = useState("all");
   const [spaceId, setSpaceId] = useState("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [period, setPeriod] = useState<PeriodFilter>("all");
   const [search, setSearch] = useState("");
+  const [calendarLibraryId, setCalendarLibraryId] = useState("all");
+  const [calendarSpaceId, setCalendarSpaceId] = useState("all");
+  const [calendarStatus, setCalendarStatus] = useState<StatusFilter>("all");
+  const [calendarDate, setCalendarDate] = useState(todayInputValue());
+  const [calendarSearch, setCalendarSearch] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
+  const [selectedReservation, setSelectedReservation] = useState<AdminSpaceReservation | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   async function loadData({ showLoading = true } = {}) {
@@ -123,6 +150,20 @@ export function AdminReservationsPanel() {
       matchesSearch
     );
   });
+  const summary = {
+    total: reservations.length,
+    pending: reservations.filter((reservation) => reservation.status === "pending").length,
+    approved: reservations.filter((reservation) => reservation.status === "approved").length,
+    rejected: reservations.filter((reservation) => reservation.status === "rejected").length,
+  };
+
+  async function loadCalendar() {
+    setIsCalendarLoading(true);
+    const result = await getAdminReservationsForDate({ date: calendarDate, libraryId: calendarLibraryId, spaceId: calendarSpaceId, status: calendarStatus, search: calendarSearch });
+    setCalendarReservations(result.data);
+    if (result.error) setFeedback({ type: "error", message: result.error });
+    setIsCalendarLoading(false);
+  }
 
   async function updateStatus(reservationId: string, nextStatus: ReservationStatus) {
     const result = await updateSpaceReservationStatus(reservationId, nextStatus, adminNotes.trim() || undefined);
@@ -133,6 +174,7 @@ export function AdminReservationsPanel() {
 
     setFeedback({ type: "success", message: "Reserva actualizada y notificación enviada." });
     await loadData({ showLoading: false });
+    if (activeTab === "calendar") await loadCalendar();
   }
 
   if (isLoading) return <Card><p className="text-sm font-semibold text-slate-600">Cargando reservas...</p></Card>;
@@ -168,6 +210,31 @@ export function AdminReservationsPanel() {
             Refrescar
           </button>
         </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {[
+            ["summary", "Resumen"],
+            ["reservations", "Reservas"],
+            ["calendar", "Calendario"],
+          ].map(([tab, label]) => (
+            <button key={tab} type="button" onClick={() => { setActiveTab(tab as ActiveTab); if (tab === "calendar") void loadCalendar(); }} className={`min-h-11 rounded-2xl px-4 py-2 text-sm font-black transition ${activeTab === tab ? "bg-ulv-blue text-white" : "border border-slate-200 bg-white text-ulv-blue hover:bg-ulv-yellow/10"}`}>{label}</button>
+          ))}
+        </div>
+      </Card>
+
+      {activeTab === "summary" ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card><p className="text-sm font-bold text-slate-500">Total de reservas</p><p className="mt-2 text-4xl font-black text-ulv-blue">{summary.total}</p></Card>
+          <Card><p className="text-sm font-bold text-slate-500">Pendientes</p><p className="mt-2 text-4xl font-black text-ulv-blue">{summary.pending}</p></Card>
+          <Card><p className="text-sm font-bold text-slate-500">Aprobadas</p><p className="mt-2 text-4xl font-black text-ulv-blue">{summary.approved}</p></Card>
+          <Card><p className="text-sm font-bold text-slate-500">Rechazadas</p><p className="mt-2 text-4xl font-black text-ulv-blue">{summary.rejected}</p></Card>
+        </div>
+      ) : null}
+
+      {activeTab === "reservations" ? (
+        <>
+
+      <Card>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Filtrar por biblioteca" options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]} value={libraryId} onChange={setLibraryId} emptyLabel="Todas las bibliotecas" /></div>
@@ -218,6 +285,69 @@ export function AdminReservationsPanel() {
           </table>
         </div>
       </Card>
+        </>
+      ) : null}
+
+      {activeTab === "calendar" ? (
+        <Card className="pb-24 md:pb-6">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div><h2 className="text-xl font-black text-ulv-blue">Calendario de reservas</h2><p className="mt-1 text-sm text-slate-600">Vista por día, biblioteca, espacio, usuario y estado.</p></div>
+            <button type="button" onClick={() => void loadCalendar()} disabled={isCalendarLoading} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60 md:w-auto">{isCalendarLoading ? "Cargando..." : "Actualizar calendario"}</button>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]} value={calendarLibraryId} onChange={(value) => { setCalendarLibraryId(value); setCalendarSpaceId("all"); }} emptyLabel="Todas las bibliotecas" /></div>
+            <label><span className="text-sm font-bold text-ulv-blue">Espacio</span><select value={calendarSpaceId} onChange={(event) => setCalendarSpaceId(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 font-bold"><option value="all">Todos</option>{spaces.filter((space) => calendarLibraryId === "all" || space.library_id === calendarLibraryId).map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label>
+            <label><span className="text-sm font-bold text-ulv-blue">Estado</span><select value={calendarStatus} onChange={(event) => setCalendarStatus(event.target.value as StatusFilter)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 font-bold"><option value="all">Todos</option><option value="pending">Pendiente</option><option value="approved">Aprobada</option><option value="rejected">Rechazada</option><option value="cancelled">Cancelada</option><option value="completed">Completada</option></select></label>
+            <label><span className="text-sm font-bold text-ulv-blue">Fecha</span><input type="date" value={calendarDate} onChange={(event) => setCalendarDate(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 font-bold" /></label>
+            <label><span className="text-sm font-bold text-ulv-blue">Buscar usuario</span><span className="relative mt-2 block"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} className="min-h-12 w-full rounded-2xl border border-slate-200 pl-11 pr-4 font-semibold" /></span></label>
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {calendarReservations.length === 0 ? <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500 xl:col-span-2">No hay reservas para los filtros seleccionados.</p> : null}
+            {calendarReservations.map((reservation) => (
+              <article key={reservation.id} className={`rounded-3xl border p-4 ${getStatusClassName(reservation.status)}`}>
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0"><h3 className="break-words text-lg font-black">{reservation.library_spaces?.name ?? "Espacio"}</h3><p className="mt-1 text-sm font-semibold">{reservation.libraries?.name ?? "Biblioteca"}</p></div>
+                  <span className="w-fit rounded-full bg-white/80 px-3 py-1 text-xs font-black">{getReservationStatusLabel(reservation.status)}</span>
+                </div>
+                <dl className="mt-4 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                  <div><dt className="font-black">Solicitante</dt><dd>{reservation.requester?.name ?? "Sin nombre"}</dd></div>
+                  <div><dt className="font-black">Correo</dt><dd className="break-words">{reservation.requester?.email ?? "Sin correo"}</dd></div>
+                  <div><dt className="font-black">Inicio</dt><dd>{formatDateTime(reservation.start_at)}</dd></div>
+                  <div><dt className="font-black">Fin</dt><dd>{formatDateTime(reservation.end_at)}</dd></div>
+                  <div><dt className="font-black">Horario</dt><dd>{formatTime(reservation.start_at)} - {formatTime(reservation.end_at)}</dd></div>
+                  <div><dt className="font-black">Motivo</dt><dd>{reservation.purpose ?? "Sin motivo"}</dd></div>
+                </dl>
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  <button type="button" onClick={() => void updateStatus(reservation.id, "approved")} className="min-h-10 rounded-xl bg-ulv-yellow px-3 py-2 text-xs font-black text-ulv-blue">Aprobar</button>
+                  <button type="button" onClick={() => void updateStatus(reservation.id, "rejected")} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-ulv-blue">Rechazar</button>
+                  <button type="button" onClick={() => void updateStatus(reservation.id, "completed")} className="min-h-10 rounded-xl bg-ulv-blue px-3 py-2 text-xs font-black text-white">Completar</button>
+                  <button type="button" onClick={() => setSelectedReservation(reservation)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-ulv-blue">Ver detalle</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+      {selectedReservation ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-3 md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Detalle de reserva">
+          <div className="max-h-[92vh] w-full overflow-y-auto rounded-3xl bg-white p-5 shadow-xl md:max-w-2xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div><p className="text-sm font-bold text-ulv-yellow">Reserva</p><h3 className="text-2xl font-black text-ulv-blue">Detalle administrativo</h3></div>
+              <button type="button" onClick={() => setSelectedReservation(null)} className="min-h-11 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-black text-ulv-blue">Cerrar</button>
+            </div>
+            <dl className="mt-5 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+              <div><dt className="font-black text-ulv-blue">Solicitante</dt><dd>{selectedReservation.requester?.name ?? "Sin nombre"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Correo</dt><dd className="break-words">{selectedReservation.requester?.email ?? "Sin correo"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Biblioteca</dt><dd>{selectedReservation.libraries?.name ?? "Biblioteca"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Espacio</dt><dd>{selectedReservation.library_spaces?.name ?? "Espacio"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Inicio</dt><dd>{formatDateTime(selectedReservation.start_at)}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Fin</dt><dd>{formatDateTime(selectedReservation.end_at)}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Estado</dt><dd>{getReservationStatusLabel(selectedReservation.status)}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Motivo</dt><dd>{selectedReservation.purpose ?? "Sin motivo"}</dd></div>
+            </dl>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

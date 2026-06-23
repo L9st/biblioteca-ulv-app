@@ -25,6 +25,13 @@ export type AdminSpaceReservation = {
 };
 
 export type AdminReservationsResult<T> = { data: T; error: string | null };
+export type AdminReservationsForDateInput = {
+  date: string;
+  libraryId?: string;
+  spaceId?: string;
+  status?: "all" | ReservationStatus;
+  search?: string;
+};
 
 type RawAdminReservation = Omit<AdminSpaceReservation, "requester" | "reviewer" | "library_spaces" | "libraries" | "status"> & {
   status: string;
@@ -41,6 +48,12 @@ function normalizeReservation(item: RawAdminReservation): AdminSpaceReservation 
 function normalizeSpace(space: RawAdminSpace): ReservableSpace { return { ...space, libraries: normalizeRelation(space.libraries) }; }
 function getAdminReservationLoadError(message: string) { const lower = message.toLowerCase(); if (lower.includes("permission") || lower.includes("permiso") || lower.includes("denied") || lower.includes("rls")) return "No tienes permisos para administrar reservas."; return "No se pudieron cargar las reservas administrativas."; }
 function getAdminReservationUpdateError(message: string) { const lower = message.toLowerCase(); if (lower.includes("permission") || lower.includes("permiso") || lower.includes("denied") || lower.includes("rls")) return "No tienes permisos para administrar reservas."; return "No se pudo actualizar el estado de la reserva."; }
+
+function getDayRange(date: string) {
+  const start = new Date(`${date}T00:00:00`);
+  const end = new Date(`${date}T23:59:59.999`);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
 
 export async function getAdminSpaceReservations(): Promise<AdminReservationsResult<AdminSpaceReservation[]>> {
   const { data, error } = await supabase
@@ -114,4 +127,53 @@ export async function getAdminReservableSpaces(): Promise<AdminReservationsResul
   const { data, error } = await supabase.from("library_spaces").select("id, library_id, name, slug, description, capacity, location_hint, is_reservable, status, libraries (id, name, code)").eq("is_reservable", true).order("name", { ascending: true });
   if (error) return { data: [], error: getAdminReservationLoadError(error.message) };
   return { data: ((data ?? []) as RawAdminSpace[]).map(normalizeSpace), error: null };
+}
+
+export async function getAdminReservationsForDate(input: AdminReservationsForDateInput): Promise<AdminReservationsResult<AdminSpaceReservation[]>> {
+  const range = getDayRange(input.date);
+  let query = supabase
+    .from("space_reservations")
+    .select(
+      `
+      id,
+      user_id,
+      library_id,
+      space_id,
+      start_at,
+      end_at,
+      purpose,
+      attendees_count,
+      notes,
+      status,
+      admin_notes,
+      reviewed_by,
+      reviewed_at,
+      created_at,
+      updated_at,
+      requester:app_users!space_reservations_user_id_fkey (id, name, email, role),
+      reviewer:app_users!space_reservations_reviewed_by_fkey (id, name, email, role),
+      library_spaces (id, name, slug),
+      libraries (id, name, code)
+      `
+    )
+    .lt("start_at", range.end)
+    .gt("end_at", range.start)
+    .order("start_at", { ascending: true });
+
+  if (input.libraryId && input.libraryId !== "all") query = query.eq("library_id", input.libraryId);
+  if (input.spaceId && input.spaceId !== "all") query = query.eq("space_id", input.spaceId);
+  if (input.status && input.status !== "all") query = query.eq("status", input.status);
+
+  const { data, error } = await query;
+  if (error) return { data: [], error: getAdminReservationLoadError(error.message) };
+
+  const reservations = ((data ?? []) as RawAdminReservation[]).map(normalizeReservation);
+  const cleanSearch = input.search?.trim().toLowerCase() ?? "";
+
+  return {
+    data: cleanSearch
+      ? reservations.filter((reservation) => [reservation.requester?.name, reservation.requester?.email, reservation.library_spaces?.name, reservation.libraries?.name].some((value) => value?.toLowerCase().includes(cleanSearch)))
+      : reservations,
+    error: null,
+  };
 }

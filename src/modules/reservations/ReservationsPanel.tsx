@@ -8,16 +8,20 @@ import { DropdownSelect } from "@/app/ui/DropdownSelect";
 import { supabase } from "@/lib/supabase";
 import {
   cancelMySpaceReservation,
+  buildDaySchedule,
   createSpaceReservation,
   getMySpaceReservations,
   getReservableSpaces,
+  getReservationsForDate,
   getReservationStatusLabel,
+  type ReservationCalendarItem,
   type ReservableSpace,
   type SpaceReservation,
 } from "@/services/reservations.service";
 
-type ActiveTab = "reserve" | "mine";
+type ActiveTab = "reserve" | "mine" | "calendar";
 type Feedback = { type: "success" | "error"; message: string };
+type CalendarStatusFilter = "all" | "approved" | "pending";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(new Date(value));
@@ -36,6 +40,16 @@ function canCancel(status: string) {
   return status === "pending" || status === "approved";
 }
 
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getBlockClassName(isOccupied: boolean, status?: string) {
+  if (!isOccupied) return "border-slate-200 bg-white text-slate-700";
+  if (status === "approved") return "border-ulv-blue bg-ulv-blue/10 text-ulv-blue";
+  return "border-ulv-yellow bg-ulv-yellow/20 text-ulv-blue";
+}
+
 const activeButtonClass = "border-ulv-blue bg-ulv-blue text-white shadow-sm";
 const inactiveButtonClass = "border-slate-200 bg-white text-ulv-blue hover:border-ulv-yellow";
 const selectionButtonBaseClass = "w-full rounded-xl border px-2 py-2 text-center text-xs font-black leading-tight transition sm:w-auto sm:px-4 sm:text-sm";
@@ -46,6 +60,7 @@ export function ReservationsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<ReservableSpace[]>([]);
   const [reservations, setReservations] = useState<SpaceReservation[]>([]);
   const [libraryId, setLibraryId] = useState("all");
@@ -55,6 +70,12 @@ export function ReservationsPanel() {
   const [purpose, setPurpose] = useState("");
   const [attendeesCount, setAttendeesCount] = useState("");
   const [notes, setNotes] = useState("");
+  const [calendarLibraryId, setCalendarLibraryId] = useState("all");
+  const [calendarSpaceId, setCalendarSpaceId] = useState("all");
+  const [calendarDate, setCalendarDate] = useState(todayInputValue());
+  const [calendarStatus, setCalendarStatus] = useState<CalendarStatusFilter>("all");
+  const [calendarReservations, setCalendarReservations] = useState<ReservationCalendarItem[]>([]);
+  const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   async function loadData() {
@@ -62,6 +83,7 @@ export function ReservationsPanel() {
     const { data } = await supabase.auth.getSession();
     const hasSession = Boolean(data.session);
     setIsAuthenticated(hasSession);
+    setCurrentUserId(data.session?.user.id ?? null);
 
     if (!hasSession) {
       setIsLoading(false);
@@ -104,6 +126,15 @@ export function ReservationsPanel() {
     ).values(),
   );
   const filteredSpaces = libraryId === "all" ? spaces : spaces.filter((space) => space.library_id === libraryId);
+  const calendarSpaces = spaces.filter((space) => (calendarLibraryId === "all" || space.library_id === calendarLibraryId) && (calendarSpaceId === "all" || space.id === calendarSpaceId));
+
+  async function loadCalendar() {
+    setIsCalendarLoading(true);
+    const result = await getReservationsForDate({ date: calendarDate, libraryId: calendarLibraryId, spaceId: calendarSpaceId, status: calendarStatus });
+    setCalendarReservations(result.data);
+    if (result.error) setFeedback({ type: "error", message: result.error });
+    setIsCalendarLoading(false);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -210,6 +241,16 @@ export function ReservationsPanel() {
             className={`${selectionButtonBaseClass} ${activeTab === "mine" ? activeButtonClass : inactiveButtonClass}`}
           >
             Mis reservas
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("calendar");
+              void loadCalendar();
+            }}
+            className={`${selectionButtonBaseClass} ${activeTab === "calendar" ? activeButtonClass : inactiveButtonClass}`}
+          >
+            Calendario
           </button>
         </div>
       </Card>
@@ -421,6 +462,55 @@ export function ReservationsPanel() {
                 )}
               </tbody>
             </table>
+          </div>
+        </Card>
+      ) : null}
+
+      {activeTab === "calendar" ? (
+        <Card className="w-full max-w-full overflow-hidden p-4 pb-24 sm:p-6 md:pb-6">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-black text-ulv-blue">Calendario de disponibilidad</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Consulta horarios ocupados sin ver datos personales de otros usuarios.</p>
+            </div>
+            <button type="button" onClick={() => void loadCalendar()} disabled={isCalendarLoading} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800] disabled:opacity-60 md:w-auto">
+              {isCalendarLoading ? "Cargando..." : "Actualizar calendario"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]} value={calendarLibraryId} onChange={(value) => { setCalendarLibraryId(value); setCalendarSpaceId("all"); }} emptyLabel="Todas las bibliotecas" /></div>
+            <label><span className="text-sm font-bold text-ulv-blue">Espacio</span><select value={calendarSpaceId} onChange={(event) => setCalendarSpaceId(event.target.value)} className={fieldClass}><option value="all">Todos los espacios</option>{spaces.filter((space) => calendarLibraryId === "all" || space.library_id === calendarLibraryId).map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label>
+            <label><span className="text-sm font-bold text-ulv-blue">Fecha</span><input type="date" value={calendarDate} onChange={(event) => setCalendarDate(event.target.value)} className={fieldClass} /></label>
+            <label><span className="text-sm font-bold text-ulv-blue">Estado</span><select value={calendarStatus} onChange={(event) => setCalendarStatus(event.target.value as CalendarStatusFilter)} className={fieldClass}><option value="all">Todas</option><option value="approved">Aprobadas</option><option value="pending">Pendientes</option></select></label>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {calendarSpaces.length === 0 ? <p className="rounded-2xl bg-white p-5 text-center text-sm font-semibold text-slate-500">Selecciona una biblioteca o espacio disponible.</p> : null}
+            {calendarSpaces.map((space) => {
+              const blocks = buildDaySchedule({ date: calendarDate, reservations: calendarReservations, spaceId: space.id, currentUserId });
+              const dayReservations = calendarReservations.filter((reservation) => reservation.space_id === space.id);
+              return (
+                <section key={space.id} className="rounded-3xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0"><h3 className="break-words text-lg font-black text-ulv-blue">{space.name}</h3><p className="mt-1 text-sm text-slate-600">{space.libraries?.name ?? "Biblioteca"}</p></div>
+                    <span className="w-fit rounded-full bg-ulv-blue px-3 py-1 text-xs font-black text-white">{dayReservations.length} reservas</span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {blocks.map((block) => (
+                      <div key={`${space.id}-${block.start}`} className={`rounded-2xl border p-3 ${getBlockClassName(block.isOccupied, block.status)}`}>
+                        <p className="text-sm font-black">{block.label}</p>
+                        <p className="mt-1 text-sm font-semibold">{block.displayText}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button type="button" onClick={() => { setSpaceId(space.id); setStartAt(`${calendarDate}T07:00`); setEndAt(`${calendarDate}T08:00`); setActiveTab("reserve"); }} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-4 py-2 text-sm font-black text-ulv-blue">Reservar este espacio</button>
+                    <button type="button" onClick={() => setActiveTab("mine")} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-2 text-sm font-black text-ulv-blue">Ver mis reservas</button>
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </Card>
       ) : null}
