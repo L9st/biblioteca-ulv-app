@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Biblioteca ULV">
+  <rect width="512" height="512" fill="#06426a"/>
+  <circle cx="256" cy="256" r="196" fill="#fac600"/>
+  <path fill="#06426a" d="M150 158c0-18 14-32 32-32h148c18 0 32 14 32 32v220H150V158Z"/>
+  <path fill="#ffffff" d="M190 172h52v160h-52V172Zm76 0h66v28h-66v-28Zm0 56h66v28h-66v-28Zm0 56h66v28h-66v-28ZM128 378h256v34H128v-34Z"/>
+</svg>

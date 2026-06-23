@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Download, FileSpreadsheet, RefreshCw, Search, ShieldAlert } from "lucide-react";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import { createAuditLog } from "@/services/admin-audit.service";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import {
@@ -186,6 +187,11 @@ export function AdminReportsPanel() {
     : null;
 
   function handleExportCsv() {
+    if (isOffline()) {
+      setFeedback({ type: "error", message: OFFLINE_ACTION_MESSAGE });
+      return;
+    }
+
     if (filteredLogs.length === 0) {
       setFeedback({ type: "error", message: "No hay registros para exportar." });
       return;
@@ -203,6 +209,11 @@ export function AdminReportsPanel() {
   }
 
   function handleExportExcel() {
+    if (isOffline()) {
+      setFeedback({ type: "error", message: OFFLINE_ACTION_MESSAGE });
+      return;
+    }
+
     if (filteredLogs.length === 0) {
       setFeedback({ type: "error", message: "No hay registros para exportar." });
       return;

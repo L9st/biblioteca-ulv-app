@@ -1,10 +1,45 @@
 {
-  "name": "Biblioteca ULV",
+  "name": "Biblioteca ULV App",
   "short_name": "Biblioteca ULV",
   "description": "Aplicación de servicios bibliotecarios de la Universidad Linda Vista",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f9f9f9",
   "theme_color": "#06426a",
-  "icons": []
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }

@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import { normalizeHelpArticle, type HelpAudience, type HelpCategory, type HelpResult, type HelpStatus, type PublicHelpArticle } from "@/services/help.service";
 
 export type AdminHelpArticle = PublicHelpArticle;
@@ -44,6 +45,8 @@ export async function getAdminLibrariesForHelp(): Promise<HelpResult<AdminHelpLi
 }
 
 export async function createHelpArticle(input: HelpArticleInput): Promise<HelpResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { data: null, error: "Debes iniciar sesión para crear artículos." };
   const { data, error } = await supabase.from("help_articles").insert({ ...input, created_by: userData.user.id }).select("id, title").single();
@@ -54,6 +57,8 @@ export async function createHelpArticle(input: HelpArticleInput): Promise<HelpRe
 }
 
 export async function updateHelpArticle(articleId: string, input: HelpArticleInput): Promise<HelpResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.from("help_articles").update(input).eq("id", articleId);
   if (error) return { data: null, error: helpError(error.message) };
 
@@ -62,6 +67,8 @@ export async function updateHelpArticle(articleId: string, input: HelpArticleInp
 }
 
 export async function toggleHelpArticleStatus(articleId: string, status: HelpStatus): Promise<HelpResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase.from("help_articles").update({ status }).eq("id", articleId).select("id, title, status").single();
   if (error) return { data: null, error: "No se pudo cambiar el estado del artículo." };
 

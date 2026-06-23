@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Biblioteca ULV">
+  <rect width="512" height="512" rx="112" fill="#06426a"/>
+  <path fill="#fac600" d="M120 150c0-22 18-40 40-40h224c22 0 40 18 40 40v250H120V150Z"/>
+  <path fill="#06426a" d="M160 158h72v206h-72V158Zm96 0h96v34h-96v-34Zm0 66h96v34h-96v-34Zm0 66h96v34h-96v-34Z"/>
+  <path fill="#ffffff" d="M96 400h320v36H96v-36Z"/>
+</svg>

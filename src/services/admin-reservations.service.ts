@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import { type ReservableSpace, type ReservationStatus } from "@/services/reservations.service";
 
 export type AdminSpaceReservation = {
@@ -88,6 +89,8 @@ export async function getAdminSpaceReservations(): Promise<AdminReservationsResu
 }
 
 export async function updateSpaceReservationStatus(reservationId: string, status: ReservationStatus, adminNotes?: string): Promise<AdminReservationsResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data: reservation } = await supabase
     .from("space_reservations")
     .select("id, space_id, library_spaces (name)")

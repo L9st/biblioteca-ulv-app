@@ -57,7 +57,7 @@ export function InstallAppButton() {
       <p className="text-sm font-bold text-ulv-blue">Instalar app</p>
       <h2 className="mt-2 text-xl font-black text-slate-950">Instalar Biblioteca ULV</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        Agrega esta app a tu pantalla de inicio para acceder más rápido.
+        Instala la app para acceder más rápido desde tu celular. Algunas secciones pueden estar disponibles sin conexión.
       </p>
       <button
         type="button"

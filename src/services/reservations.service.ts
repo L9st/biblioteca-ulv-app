@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type ReservationStatus = "pending" | "approved" | "rejected" | "cancelled" | "completed";
 export type ReservationCalendarStatus = ReservationStatus;
@@ -174,11 +175,15 @@ export async function getMySpaceReservations(): Promise<ReservationResult<SpaceR
 }
 
 export async function createSpaceReservation(input: CreateSpaceReservationInput): Promise<ReservationResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.rpc("create_space_reservation", { p_space_id: input.spaceId, p_start_at: input.startAt, p_end_at: input.endAt, p_purpose: input.purpose, p_attendees_count: input.attendeesCount, p_notes: input.notes });
   return { data: null, error: error ? getReservationErrorMessage(error.message) : null };
 }
 
 export async function cancelMySpaceReservation(reservationId: string): Promise<ReservationResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.rpc("cancel_my_space_reservation", { p_reservation_id: reservationId });
   return { data: null, error: error ? getReservationErrorMessage(error.message) : null };
 }

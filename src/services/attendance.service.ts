@@ -1,5 +1,6 @@
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type Library = {
   id: string;
@@ -226,6 +227,8 @@ export async function getMyAttendanceLogs(): Promise<AttendanceLog[]> {
 }
 
 export async function checkInLibrary(libraryId: string): Promise<AttendanceActionResult> {
+  if (isOffline()) return { ok: false, message: OFFLINE_ACTION_MESSAGE };
+
   const session = await getCurrentSession();
 
   if (!session) {
@@ -251,6 +254,8 @@ export async function checkInLibrary(libraryId: string): Promise<AttendanceActio
 }
 
 export async function checkOutLibrary(): Promise<AttendanceActionResult> {
+  if (isOffline()) return { ok: false, message: OFFLINE_ACTION_MESSAGE };
+
   const session = await getCurrentSession();
 
   if (!session) {

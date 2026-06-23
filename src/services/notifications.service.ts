@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type NotificationType = "system" | "reservation" | "attendance";
 
@@ -60,11 +61,15 @@ export async function getUnreadNotificationsCount(): Promise<NotificationsResult
 }
 
 export async function markNotificationRead(notificationId: string): Promise<NotificationsResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.rpc("mark_notification_read", { p_notification_id: notificationId });
   return { data: null, error: error ? "No se pudo marcar la notificación como leída." : null };
 }
 
 export async function markAllNotificationsRead(): Promise<NotificationsResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.rpc("mark_all_notifications_read");
   return { data: null, error: error ? "No se pudieron marcar las notificaciones como leídas." : null };
 }

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type AdminAttendanceUser = {
   name: string | null;
@@ -194,6 +195,8 @@ async function getAdminAttendanceLogById(attendanceLogId: string): Promise<Admin
 }
 
 export async function correctAttendanceLog(input: CorrectAttendanceLogInput): Promise<AdminServiceResult<AdminAttendanceLog | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.rpc("correct_attendance_log", {
     p_attendance_log_id: input.attendanceLogId,
     p_new_check_in_at: input.newCheckInAt,

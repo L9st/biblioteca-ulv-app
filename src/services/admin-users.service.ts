@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type AppUserRole = "student" | "librarian" | "admin" | "superadmin";
 
@@ -128,6 +129,8 @@ export async function getAdminUsers(): Promise<AdminUsersResult<AdminAppUser[]>>
 }
 
 export async function updateUserRole(userId: string, role: AppUserRole): Promise<AdminUsersResult<AdminAppUser | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const previousUser = await supabase.from("app_users").select("id, email, role").eq("id", userId).maybeSingle();
   const { data, error } = await supabase
     .from("app_users")
@@ -157,6 +160,8 @@ export async function updateUserRole(userId: string, role: AppUserRole): Promise
 }
 
 export async function updateUserStatus(userId: string, status: AppUserStatus): Promise<AdminUsersResult<AdminAppUser | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const previousUser = await supabase.from("app_users").select("id, email, status").eq("id", userId).maybeSingle();
   const { data, error } = await supabase
     .from("app_users")

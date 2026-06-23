@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import {
   normalizeAnnouncement,
   type AnnouncementAudience,
@@ -53,6 +54,8 @@ export async function getAdminAnnouncementLibraries(): Promise<AnnouncementResul
 }
 
 export async function createAnnouncement(input: AnnouncementInput): Promise<AnnouncementResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { data: null, error: "Debes iniciar sesión para crear avisos." };
 
@@ -64,6 +67,8 @@ export async function createAnnouncement(input: AnnouncementInput): Promise<Anno
 }
 
 export async function updateAnnouncement(announcementId: string, input: AnnouncementInput): Promise<AnnouncementResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.from("announcements").update(input).eq("id", announcementId);
   if (error) return { data: null, error: "No se pudo actualizar el aviso." };
 
@@ -72,6 +77,8 @@ export async function updateAnnouncement(announcementId: string, input: Announce
 }
 
 export async function toggleAnnouncementStatus(announcementId: string, status: AnnouncementStatus): Promise<AnnouncementResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase.from("announcements").update({ status }).eq("id", announcementId).select("id, title, status").single();
   if (error) return { data: null, error: "No se pudo cambiar el estado del aviso." };
 

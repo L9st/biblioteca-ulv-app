@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type QrLibrary = {
   id: string;
@@ -177,6 +178,8 @@ export async function generateAttendanceQrToken(
   libraryId: string,
   expiresSeconds = 60
 ): Promise<GenerateAttendanceQrResult> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase.rpc("generate_attendance_qr_token", {
     p_library_id: libraryId,
     p_expires_seconds: expiresSeconds,
@@ -213,6 +216,19 @@ export async function generateAttendanceQrToken(
 }
 
 export async function validateAttendanceQrAndToggle(tokenOrCode: string): Promise<AttendanceQrValidation> {
+  if (isOffline()) {
+    return {
+      success: false,
+      action: "none",
+      message: OFFLINE_ACTION_MESSAGE,
+      library_id: null,
+      library_name: null,
+      check_in_at: null,
+      check_out_at: null,
+      total_minutes: null,
+    };
+  }
+
   const token = extractQrToken(tokenOrCode);
 
   const { data, error } = await supabase.rpc("validate_attendance_qr_and_toggle", {

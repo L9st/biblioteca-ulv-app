@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 
 export type LibraryStatus = "active" | "inactive";
 
@@ -152,6 +153,8 @@ export async function getAdminLibrarySpaces(): Promise<AdminSpacesResult<AdminLi
 }
 
 export async function createLibrarySpace(input: LibrarySpaceInput): Promise<AdminSpacesResult<AdminLibrarySpace | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase
     .from("library_spaces")
     .insert(input)
@@ -199,6 +202,8 @@ export async function updateLibrarySpace(
   spaceId: string,
   input: LibrarySpaceInput
 ): Promise<AdminSpacesResult<AdminLibrarySpace | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase
     .from("library_spaces")
     .update(input)
@@ -247,6 +252,8 @@ export async function toggleLibrarySpaceStatus(
   spaceId: string,
   status: LibrarySpaceStatus
 ): Promise<AdminSpacesResult<AdminLibrarySpace | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase
     .from("library_spaces")
     .update({ status })

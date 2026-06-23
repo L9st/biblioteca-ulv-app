@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
+import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import {
   normalizeLibraryService,
   type LibraryServiceAudience,
@@ -54,6 +55,8 @@ export async function getAdminLibrariesForServices(): Promise<LibraryServiceResu
 }
 
 export async function createLibraryService(input: LibraryServiceInput): Promise<LibraryServiceResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { data: null, error: "Debes iniciar sesión para crear servicios." };
   const { data, error } = await supabase.from("library_services").insert({ ...input, created_by: userData.user.id }).select("id, title").single();
@@ -64,6 +67,8 @@ export async function createLibraryService(input: LibraryServiceInput): Promise<
 }
 
 export async function updateLibraryService(serviceId: string, input: LibraryServiceInput): Promise<LibraryServiceResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { error } = await supabase.from("library_services").update(input).eq("id", serviceId);
   if (error) return { data: null, error: serviceError(error.message) };
 
@@ -72,6 +77,8 @@ export async function updateLibraryService(serviceId: string, input: LibraryServ
 }
 
 export async function toggleLibraryServiceStatus(serviceId: string, status: LibraryServiceStatus): Promise<LibraryServiceResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
   const { data, error } = await supabase.from("library_services").update({ status }).eq("id", serviceId).select("id, title, status").single();
   if (error) return { data: null, error: "No se pudo cambiar el estado del servicio." };
 
