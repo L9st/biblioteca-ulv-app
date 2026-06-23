@@ -11,24 +11,29 @@ import {
   buildUserReport,
   formatMinutes,
   getClosedMinutes,
+  getReportChartData,
   getReportAttendanceLogs,
   getReportLibraries,
+  type ReportChartData,
   type ReportAttendanceLog,
   type ReportLibrary,
+  type ReportSpaceReservation,
   type ReportPeriod,
 } from "@/services/admin-reports.service";
 import { Card } from "@/app/ui/Card";
 import { StatCard } from "@/app/cards/StatCard";
 import { exportReportToCsv, exportReportToExcel } from "@/utils/export-reports";
 import { DropdownSelect } from "@/app/ui/DropdownSelect";
+import { AdminReportCharts } from "@/modules/admin/report-charts/AdminReportCharts";
 
-type ActiveTab = "summary" | "library" | "user" | "export";
+type ActiveTab = "summary" | "charts" | "library" | "user" | "export";
 type StatusFilter = "all" | "open" | "closed";
 type SourceFilter = "all" | "qr" | "manual";
 type Feedback = { type: "error"; message: string };
 
 const tabs: Array<{ id: ActiveTab; label: string }> = [
   { id: "summary", label: "Resumen" },
+  { id: "charts", label: "Gráficos" },
   { id: "library", label: "Por biblioteca" },
   { id: "user", label: "Por usuario" },
   { id: "export", label: "Exportar" },
@@ -87,6 +92,20 @@ function matchesSearch(log: ReportAttendanceLog, search: string) {
   return [log.app_users?.name, log.app_users?.email, log.libraries?.name].some((value) => value?.toLowerCase().includes(cleanSearch));
 }
 
+function matchesReservationSearch(reservation: ReportSpaceReservation, search: string) {
+  const cleanSearch = search.trim().toLowerCase();
+  if (!cleanSearch) return true;
+  return [reservation.app_users?.name, reservation.app_users?.email, reservation.libraries?.name, reservation.library_spaces?.name].some((value) => value?.toLowerCase().includes(cleanSearch));
+}
+
+function matchesReservationPeriod(reservation: ReportSpaceReservation, period: ReportPeriod, selectedDate: string) {
+  if (period === "all") return true;
+  if (period === "today") return isToday(reservation.start_at);
+  if (period === "week") return isThisWeek(reservation.start_at);
+  if (period === "month") return isThisMonth(reservation.start_at);
+  return isSameDate(reservation.start_at, selectedDate);
+}
+
 export function AdminReportsPanel() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
   const [isLoading, setIsLoading] = useState(true);
@@ -94,6 +113,8 @@ export function AdminReportsPanel() {
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
   const [libraries, setLibraries] = useState<ReportLibrary[]>([]);
   const [logs, setLogs] = useState<ReportAttendanceLog[]>([]);
+  const [chartData, setChartData] = useState<ReportChartData | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
   const [period, setPeriod] = useState<ReportPeriod>("today");
   const [selectedDate, setSelectedDate] = useState("");
   const [libraryId, setLibraryId] = useState("all");
@@ -123,12 +144,14 @@ export function AdminReportsPanel() {
       return;
     }
 
-    const [librariesResult, logsResult] = await Promise.all([getReportLibraries(), getReportAttendanceLogs()]);
+    const [librariesResult, logsResult, chartResult] = await Promise.all([getReportLibraries(), getReportAttendanceLogs(), getReportChartData()]);
     setLibraries(librariesResult.data);
     setLogs(logsResult.data);
+    setChartData(chartResult.data);
+    setChartError(chartResult.error);
 
-    if (librariesResult.error || logsResult.error) {
-      setFeedback({ type: "error", message: librariesResult.error ?? logsResult.error ?? "No se pudieron cargar los reportes." });
+    if (librariesResult.error || logsResult.error || chartResult.error) {
+      setFeedback({ type: "error", message: librariesResult.error ?? logsResult.error ?? chartResult.error ?? "No se pudieron cargar los reportes." });
     }
 
     setIsLoading(false);
@@ -152,6 +175,15 @@ export function AdminReportsPanel() {
   const libraryReport = buildLibraryReport(filteredLogs);
   const userReport = buildUserReport(filteredLogs);
   const recentLogs = filteredLogs.slice(0, 10);
+  const filteredChartData: ReportChartData | null = chartData
+    ? {
+        attendanceLogs: filteredLogs,
+        reservations: chartData.reservations.filter((reservation) => {
+          const matchesLibrary = libraryId === "all" || reservation.library_id === libraryId;
+          return matchesLibrary && matchesReservationPeriod(reservation, period, selectedDate) && matchesReservationSearch(reservation, search);
+        }),
+      }
+    : null;
 
   function handleExportCsv() {
     if (filteredLogs.length === 0) {
@@ -234,6 +266,8 @@ export function AdminReportsPanel() {
       <Card className="p-3"><div className="flex gap-2 overflow-x-auto pb-1">{tabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`min-h-11 shrink-0 rounded-2xl px-4 py-2 text-sm font-black transition ${activeTab === tab.id ? "bg-ulv-yellow text-ulv-blue shadow-sm" : "border border-slate-200 bg-white text-ulv-blue hover:bg-ulv-yellow/10"}`}>{tab.label}</button>)}</div></Card>
 
       {activeTab === "summary" ? <div className="space-y-5"><div className="grid grid-cols-2 gap-3 md:grid-cols-5"><StatCard label="Total de registros" value={String(summary.totalLogs)} detail="Filtrados" /><StatCard label="Usuarios únicos" value={String(summary.uniqueUsers)} detail="Con asistencia" /><StatCard label="Horas acumuladas" value={summary.totalHoursText} detail="Solo cerradas" /><StatCard label="Entradas abiertas" value={String(summary.openLogs)} detail="En curso" /><StatCard label="Entradas cerradas" value={String(summary.closedLogs)} detail="Finalizadas" /></div><Card><h2 className="mb-4 text-xl font-black text-ulv-blue">Últimos registros filtrados</h2><div className="overflow-x-auto rounded-2xl border border-slate-200"><table className="min-w-[820px] w-full text-left text-sm"><thead className="bg-ulv-blue text-white"><tr><th className="px-4 py-3">Usuario</th><th className="px-4 py-3">Biblioteca</th><th className="px-4 py-3">Entrada</th><th className="px-4 py-3">Salida</th><th className="px-4 py-3">Tiempo</th><th className="px-4 py-3">Estado</th></tr></thead><tbody className="divide-y divide-slate-200 bg-white">{recentLogs.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center font-semibold text-slate-500">No hay registros para los filtros seleccionados.</td></tr> : recentLogs.map((log) => <tr key={log.id}><td className="px-4 py-3 font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</td><td className="px-4 py-3 font-semibold text-slate-700">{log.libraries?.name ?? "Biblioteca"}</td><td className="px-4 py-3">{formatDateTime(log.check_in_at)}</td><td className="px-4 py-3">{formatDateTime(log.check_out_at)}</td><td className="px-4 py-3 font-bold">{formatMinutes(getClosedMinutes(log))}</td><td className="px-4 py-3">{log.status === "open" ? "Abierta" : "Cerrada"}</td></tr>)}</tbody></table></div></Card></div> : null}
+
+      {activeTab === "charts" ? <AdminReportCharts data={filteredChartData} isLoading={isRefreshing} error={chartError} /> : null}
 
       {activeTab === "library" ? <Card><h2 className="mb-4 text-xl font-black text-ulv-blue">Por biblioteca</h2><div className="overflow-x-auto rounded-2xl border border-slate-200"><table className="min-w-[680px] w-full text-left text-sm"><thead className="bg-ulv-blue text-white"><tr><th className="px-4 py-3">Biblioteca</th><th className="px-4 py-3">Total de registros</th><th className="px-4 py-3">Usuarios únicos</th><th className="px-4 py-3">Tiempo total</th></tr></thead><tbody className="divide-y divide-slate-200 bg-white">{libraryReport.length === 0 ? <tr><td colSpan={4} className="px-4 py-8 text-center font-semibold text-slate-500">No hay datos por biblioteca.</td></tr> : libraryReport.map((item) => <tr key={item.libraryId}><td className="px-4 py-3"><p className="font-black text-ulv-blue">{item.libraryName}</p><p className="text-xs font-bold text-slate-500">{item.libraryCode}</p></td><td className="px-4 py-3 font-bold">{item.totalLogs}</td><td className="px-4 py-3 font-bold">{item.uniqueUsers}</td><td className="px-4 py-3 font-black text-ulv-blue">{item.totalHoursText}</td></tr>)}</tbody></table></div></Card> : null}
 
