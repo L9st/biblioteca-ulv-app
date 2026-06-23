@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Camera, CheckCircle2, Clock3, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Clock3, Keyboard, XCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { extractQrToken, validateAttendanceQrAndToggle, type AttendanceQrValidation } from "@/services/qr.service";
 import { Card } from "@/app/ui/Card";
@@ -11,8 +11,52 @@ const scannerElementId = "attendance-qr-scanner";
 
 type ScannerStatus = "checking-session" | "ready" | "scanning" | "validating" | "success" | "error";
 
+type ScannerDiagnostics = {
+  currentUrl: string;
+  isSecure: boolean;
+  hasMediaDevices: boolean;
+  userAgent: string;
+};
+
 function getSuccessMessage(result: AttendanceQrValidation) {
   return result.action === "check_in" ? "Entrada registrada correctamente" : "Salida registrada correctamente";
+}
+
+function getScannerDiagnostics(): ScannerDiagnostics {
+  const currentUrl = typeof window !== "undefined" ? window.location.href : "No disponible";
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+  const isSecure = typeof window !== "undefined" && (window.isSecureContext || hostname === "localhost");
+  const hasMediaDevices = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices) && typeof navigator.mediaDevices.getUserMedia === "function";
+  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "No disponible";
+
+  return {
+    currentUrl,
+    isSecure,
+    hasMediaDevices,
+    userAgent,
+  };
+}
+
+function getCameraErrorMessage(error: unknown): string {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError") {
+      return "Permiso de cámara denegado. Activa el permiso de cámara en el navegador.";
+    }
+
+    if (error.name === "NotFoundError") {
+      return "No se encontró una cámara disponible en este dispositivo.";
+    }
+
+    if (error.name === "NotReadableError") {
+      return "La cámara está siendo usada por otra aplicación o no se pudo iniciar.";
+    }
+
+    if (error.name === "SecurityError") {
+      return "La cámara fue bloqueada por seguridad. Verifica que estés usando HTTPS.";
+    }
+  }
+
+  return "No se pudo abrir la cámara. Intenta abrir la app desde Chrome o Safari con HTTPS.";
 }
 
 async function stopScanner(scanner: import("html5-qrcode").Html5Qrcode | null) {
@@ -32,21 +76,40 @@ export function QrScannerPanel() {
   const [status, setStatus] = useState<ScannerStatus>("checking-session");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [message, setMessage] = useState("");
+  const [manualCode, setManualCode] = useState("");
   const [result, setResult] = useState<AttendanceQrValidation | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics>({
+    currentUrl: "No disponible",
+    isSecure: false,
+    hasMediaDevices: false,
+    userAgent: "No disponible",
+  });
   const scannerRef = useRef<import("html5-qrcode").Html5Qrcode | null>(null);
-  const hasProcessedRef = useRef(false);
+  const hasProcessedScanRef = useRef(false);
 
-  const processScannedText = useCallback(async (scannedText: string) => {
-    if (hasProcessedRef.current) {
+  const processQrValue = useCallback(async (value: string, source: "camera" | "manual") => {
+    if (source === "camera" && hasProcessedScanRef.current) {
       return;
     }
 
-    hasProcessedRef.current = true;
+    const tokenOrCode = value.trim();
+
+    if (!tokenOrCode) {
+      setStatus("error");
+      setMessage("Ingresa un código QR o código corto para registrar asistencia.");
+      return;
+    }
+
+    if (source === "camera") {
+      hasProcessedScanRef.current = true;
+    }
+
     setStatus("validating");
     setMessage("Validando QR...");
     await stopScanner(scannerRef.current);
+    scannerRef.current = null;
 
-    const token = extractQrToken(scannedText);
+    const token = extractQrToken(tokenOrCode);
     const validationResult = await validateAttendanceQrAndToggle(token);
 
     setResult(validationResult);
@@ -56,6 +119,7 @@ export function QrScannerPanel() {
 
   useEffect(() => {
     const timeout = window.setTimeout(async () => {
+      setDiagnostics(getScannerDiagnostics());
       const { data } = await supabase.auth.getSession();
       const hasSession = Boolean(data.session);
       setIsAuthenticated(hasSession);
@@ -67,50 +131,66 @@ export function QrScannerPanel() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    return () => {
+      void stopScanner(scannerRef.current);
+    };
+  }, []);
+
+  async function handleOpenCamera() {
+    const currentDiagnostics = getScannerDiagnostics();
+    setDiagnostics(currentDiagnostics);
+    setResult(null);
+    setMessage("");
+    hasProcessedScanRef.current = false;
+
+    if (!currentDiagnostics.isSecure) {
+      setStatus("error");
+      setMessage(`No se puede abrir la cámara porque la app no está cargada en una conexión segura HTTPS. Abre la app desde la URL oficial que comienza con https://. URL actual: ${currentDiagnostics.currentUrl}`);
       return;
     }
 
-    let isMounted = true;
-    let isStarted = false;
-
-    async function startScanner() {
-      try {
-        const { Html5Qrcode } = await import("html5-qrcode");
-        const scanner = new Html5Qrcode(scannerElementId);
-        scannerRef.current = scanner;
-
-        await scanner.start(
-          { facingMode: { ideal: "environment" } },
-          { fps: 10, qrbox: { width: 260, height: 260 } },
-          (decodedText) => {
-            void processScannedText(decodedText);
-          },
-          () => undefined
-        );
-
-        isStarted = true;
-
-        if (isMounted) {
-          setStatus("scanning");
-        }
-      } catch {
-        if (isMounted) {
-          setStatus("error");
-          setMessage("No se pudo abrir la cámara. Revisa permisos del navegador o usa HTTPS.");
-        }
-      }
+    if (!currentDiagnostics.hasMediaDevices) {
+      setStatus("error");
+      setMessage("Este navegador no permite abrir la cámara desde esta página. Abre la app en Chrome o Safari usando la URL oficial HTTPS.");
+      return;
     }
 
-    void startScanner();
+    try {
+      setStatus("scanning");
+      await stopScanner(scannerRef.current);
 
-    return () => {
-      isMounted = false;
-      if (isStarted) {
-        void stopScanner(scannerRef.current);
-      }
-    };
-  }, [isAuthenticated, processScannedText]);
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const scanner = new Html5Qrcode(scannerElementId);
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: { ideal: "environment" } },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          void processQrValue(decodedText, "camera");
+        },
+        () => undefined
+      );
+    } catch (error) {
+      await stopScanner(scannerRef.current);
+      scannerRef.current = null;
+      setStatus("error");
+      setMessage(getCameraErrorMessage(error));
+    }
+  }
+
+  async function handleCloseCamera() {
+    await stopScanner(scannerRef.current);
+    scannerRef.current = null;
+    hasProcessedScanRef.current = false;
+    setStatus("ready");
+    setMessage("");
+  }
+
+  function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void processQrValue(manualCode, "manual");
+  }
 
   if (status === "checking-session") {
     return (
@@ -156,50 +236,116 @@ export function QrScannerPanel() {
     );
   }
 
-  if (status === "error" && message) {
-    return (
-      <Card className="text-center">
-        <XCircle className="mx-auto h-12 w-12 text-red-600" aria-hidden="true" />
-        <h2 className="mt-3 text-xl font-black text-red-700">No se pudo registrar el movimiento</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-700">{message}</p>
-        <Link
-          href="/horas"
-          className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]"
-        >
-          Volver a mis horas
-        </Link>
-      </Card>
-    );
-  }
-
   return (
-    <Card>
-      <div className="text-center">
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
-          <Camera className="h-7 w-7" aria-hidden="true" />
-        </span>
-        <h2 className="mt-4 text-2xl font-black text-ulv-blue">Escanear QR de biblioteca</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">Apunta la cámara al QR mostrado en la biblioteca.</p>
-      </div>
+    <div className="w-full max-w-full space-y-5 overflow-hidden pb-4">
+      <Card>
+        <div className="text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
+            <Camera className="h-7 w-7" aria-hidden="true" />
+          </span>
+          <h2 className="mt-4 text-2xl font-black text-ulv-blue">Escanear QR de biblioteca</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Presiona Abrir cámara y apunta al QR mostrado en biblioteca.</p>
+        </div>
 
-      <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-2">
-        <div id={scannerElementId} className="min-h-[280px] overflow-hidden rounded-2xl bg-black text-white" />
-      </div>
+        {message ? (
+          <div className={`mt-5 rounded-2xl p-4 text-sm font-bold ${status === "error" ? "bg-red-50 text-red-800" : "bg-ulv-blue text-white"}`}>
+            <div className="flex items-start gap-2">
+              {status === "error" ? <XCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" /> : null}
+              <p className="break-words leading-6">{message}</p>
+            </div>
+          </div>
+        ) : null}
 
-      {status === "validating" ? (
-        <p className="mt-4 rounded-2xl bg-ulv-blue px-4 py-3 text-center text-sm font-bold text-white">Validando QR...</p>
-      ) : (
-        <p className="mt-4 text-center text-xs font-semibold text-slate-500">
-          La cámara funciona en HTTPS o localhost. Si no abre, revisa los permisos del navegador.
-        </p>
-      )}
+        <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-2">
+          <div id={scannerElementId} className="min-h-[280px] w-full max-w-full overflow-hidden rounded-2xl bg-black text-white" />
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void handleOpenCamera()}
+            disabled={status === "scanning" || status === "validating"}
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status === "scanning" ? "Cámara abierta" : "Abrir cámara"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCloseCamera()}
+            disabled={status !== "scanning"}
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cerrar cámara
+          </button>
+        </div>
+
+        {status === "validating" ? (
+          <p className="mt-4 rounded-2xl bg-ulv-blue px-4 py-3 text-center text-sm font-bold text-white">Validando QR...</p>
+        ) : null}
+      </Card>
+
+      <Card>
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
+            <Keyboard className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-xl font-black text-ulv-blue">Ingresar código QR manualmente</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Usa esta opción si la cámara no abre. Puedes ingresar el código corto o el token del QR.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleManualSubmit} className="mt-5 space-y-4">
+          <label className="block">
+            <span className="text-sm font-bold text-ulv-blue">Código</span>
+            <input
+              value={manualCode}
+              onChange={(event) => setManualCode(event.target.value)}
+              autoComplete="one-time-code"
+              className="mt-2 min-h-12 w-full min-w-0 max-w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-ulv-blue outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10"
+              placeholder="Código corto o token"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={status === "validating" || !manualCode.trim()}
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Registrar asistencia
+          </button>
+        </form>
+      </Card>
+
+      <Card>
+        <h2 className="text-lg font-black text-ulv-blue">Diagnóstico de conexión</h2>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div>
+            <dt className="font-bold text-slate-500">URL actual</dt>
+            <dd className="mt-1 break-all font-semibold text-slate-900">{diagnostics.currentUrl}</dd>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt className="font-bold text-slate-500">Contexto seguro</dt>
+              <dd className="mt-1 font-black text-ulv-blue">{diagnostics.isSecure ? "Sí" : "No"}</dd>
+            </div>
+            <div>
+              <dt className="font-bold text-slate-500">Cámara disponible</dt>
+              <dd className="mt-1 font-black text-ulv-blue">{diagnostics.hasMediaDevices ? "Sí" : "No"}</dd>
+            </div>
+          </div>
+          <div>
+            <dt className="font-bold text-slate-500">Navegador</dt>
+            <dd className="mt-1 break-words font-semibold text-slate-900">{diagnostics.userAgent}</dd>
+          </div>
+        </dl>
+      </Card>
 
       <Link
         href="/horas"
-        className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-slate-50"
+        className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-slate-50"
       >
         Volver a mis horas
       </Link>
-    </Card>
+    </div>
   );
 }

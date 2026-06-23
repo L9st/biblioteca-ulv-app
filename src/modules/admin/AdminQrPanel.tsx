@@ -34,6 +34,11 @@ function canManageQr(role: AppUserRole) {
   return role === "librarian" || role === "admin" || role === "superadmin";
 }
 
+function isProductionQrUrl(url: string) {
+  const normalizedUrl = url.trim().toLowerCase();
+  return normalizedUrl.startsWith("https://") && !normalizedUrl.includes("localhost") && !normalizedUrl.includes("127.0.0.1");
+}
+
 export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -82,6 +87,14 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
       return;
     }
 
+    if (!isProductionQrUrl(publicAppUrl)) {
+      setQrToken(null);
+      setQrImages(null);
+      setSecondsRemaining(0);
+      setError("Falta configurar NEXT_PUBLIC_APP_URL para generar QR de producción.");
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
 
@@ -101,7 +114,7 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
     setQrImages(images);
     setSecondsRemaining(getSecondsRemaining(result.data.expires_at));
     setIsGenerating(false);
-  }, [buildQrImages, selectedLibraryId]);
+  }, [buildQrImages, publicAppUrl, selectedLibraryId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -204,6 +217,11 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
         </div>
 
         {error ? <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+        {!isProductionQrUrl(publicAppUrl) ? (
+          <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-900">
+            URL pública actual: {publicAppUrl}. Configura `NEXT_PUBLIC_APP_URL` con una URL HTTPS de producción antes de generar QR.
+          </p>
+        ) : null}
       </Card>
 
       <Card className="bg-ulv-blue text-white">
