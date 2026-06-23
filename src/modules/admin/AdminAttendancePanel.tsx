@@ -5,11 +5,14 @@ import Link from "next/link";
 import { RefreshCw, Search, ShieldAlert } from "lucide-react";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import {
+  correctAttendanceLog,
   getActiveLibrariesForFilter,
   getAdminAttendanceLogs,
   getAdminAttendanceSummary,
+  getAttendanceCorrections,
   type AdminAttendanceLog,
   type AdminLibraryFilter,
+  type AttendanceCorrection,
 } from "@/services/admin-attendance.service";
 import { Card } from "@/app/ui/Card";
 import { StatCard } from "@/app/cards/StatCard";
@@ -17,8 +20,9 @@ import { DropdownSelect } from "@/app/ui/DropdownSelect";
 
 type ActiveTab = "summary" | "active" | "history" | "reports";
 type PeriodFilter = "today" | "week" | "month" | "date" | "all";
-type StatusFilter = "all" | "open" | "closed";
+type StatusFilter = "all" | "open" | "closed" | "corrected" | "cancelled";
 type SourceFilter = "all" | "qr" | "manual";
+type Feedback = { type: "success" | "error"; message: string };
 
 type AttendanceFilters = {
   libraryId: string;
@@ -38,6 +42,15 @@ const tabs: Array<{ id: ActiveTab; label: string }> = [
   { id: "active", label: "Activos hoy" },
   { id: "history", label: "Historial" },
   { id: "reports", label: "Reportes / filtros" },
+];
+
+const correctionReasons = [
+  "Olvidó registrar salida",
+  "Error de QR",
+  "Corrección solicitada por usuario",
+  "Corrección por biblioteca",
+  "Error de sistema",
+  "Otro",
 ];
 
 function formatDateTime(value: string | null) {
@@ -71,6 +84,17 @@ function formatMinutes(minutes: number | null) {
   }
 
   return remainingMinutes === 0 ? `${hours} h` : `${hours} h ${remainingMinutes} min`;
+}
+
+function toDateTimeLocal(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocal(value: string) {
+  return new Date(value).toISOString();
 }
 
 function startOfToday() {
@@ -298,6 +322,8 @@ function FilterControls({
           <option value="all">Todos</option>
           <option value="open">Entrada abierta</option>
           <option value="closed">Cerrado</option>
+          <option value="corrected">Corregido</option>
+          <option value="cancelled">Cancelado</option>
         </select>
       </label>
 
@@ -330,23 +356,52 @@ function FilterControls({
   );
 }
 
-function AttendanceTable({ logs }: { logs: AdminAttendanceLog[] }) {
+function AttendanceLogCards({ logs, onCorrect }: { logs: AdminAttendanceLog[]; onCorrect: (log: AdminAttendanceLog) => void }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200">
-      <table className="min-w-[920px] w-full border-collapse text-left text-sm">
+    <div className="space-y-3 md:hidden">
+      {logs.length === 0 ? (
+        <p className="rounded-2xl bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500">No hay registros con los filtros seleccionados.</p>
+      ) : null}
+      {logs.map((log) => (
+        <div key={log.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</h3>
+              <p className="mt-1 break-words text-sm font-semibold text-slate-600">{log.app_users?.email ?? "Sin correo"}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${log.status === "open" ? "bg-ulv-yellow text-ulv-blue" : "bg-green-50 text-green-800"}`}>{getStatusLabel(log.status)}</span>
+          </div>
+          <dl className="mt-4 grid grid-cols-1 gap-3 text-sm">
+            <div><dt className="font-black text-ulv-blue">Biblioteca</dt><dd className="mt-1 text-slate-700">{log.libraries?.name ?? "Biblioteca"}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Entrada</dt><dd className="mt-1 text-slate-700">{formatDateTime(log.check_in_at)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Salida</dt><dd className="mt-1 text-slate-700">{formatDateTime(log.check_out_at)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Tiempo</dt><dd className="mt-1 font-bold text-slate-900">{getTimeLabel(log)}</dd></div>
+          </dl>
+          <button type="button" onClick={() => onCorrect(log)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-4 py-2 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800]">Corregir</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AttendanceTable({ logs, onCorrect }: { logs: AdminAttendanceLog[]; onCorrect: (log: AdminAttendanceLog) => void }) {
+  return (
+    <div>
+      <AttendanceLogCards logs={logs} onCorrect={onCorrect} />
+      <table className="hidden w-full table-fixed border-collapse text-left text-sm md:table">
         <thead className="bg-ulv-blue text-white">
           <tr>
-            <th className="px-4 py-3 font-black">Usuario</th>
-            <th className="px-4 py-3 font-black">Correo</th>
-            <th className="px-4 py-3 font-black">Biblioteca</th>
-            <th className="px-4 py-3 font-black">Entrada</th>
-            <th className="px-4 py-3 font-black">Salida</th>
-            <th className="px-4 py-3 font-black">Tiempo</th>
-            <th className="px-4 py-3 font-black">Estado</th>
-            <th className="px-4 py-3 font-black">Fuente</th>
+            <th className="rounded-l-2xl px-3 py-3 font-black">Usuario</th>
+            <th className="px-3 py-3 font-black">Biblioteca</th>
+            <th className="px-3 py-3 font-black">Entrada</th>
+            <th className="px-3 py-3 font-black">Salida</th>
+            <th className="px-3 py-3 font-black">Tiempo</th>
+            <th className="px-3 py-3 font-black">Estado</th>
+            <th className="px-3 py-3 font-black">Fuente</th>
+            <th className="rounded-r-2xl px-3 py-3 font-black">Acción</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-200 bg-white">
+        <tbody className="divide-y divide-slate-200">
           {logs.length === 0 ? (
             <tr>
               <td colSpan={8} className="px-4 py-8 text-center font-semibold text-slate-500">
@@ -356,13 +411,12 @@ function AttendanceTable({ logs }: { logs: AdminAttendanceLog[] }) {
           ) : (
             logs.map((log) => (
               <tr key={log.id} className="align-top">
-                <td className="px-4 py-3 font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</td>
-                <td className="px-4 py-3 font-semibold text-slate-600">{log.app_users?.email ?? "Sin correo"}</td>
-                <td className="px-4 py-3 font-semibold text-slate-700">{log.libraries?.name ?? "Biblioteca"}</td>
-                <td className="px-4 py-3 text-slate-700">{formatDateTime(log.check_in_at)}</td>
-                <td className="px-4 py-3 text-slate-700">{formatDateTime(log.check_out_at)}</td>
-                <td className="px-4 py-3 font-bold text-slate-900">{getTimeLabel(log)}</td>
-                <td className="px-4 py-3">
+                <td className="break-words px-3 py-3"><span className="font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</span><span className="mt-1 block font-semibold text-slate-600">{log.app_users?.email ?? "Sin correo"}</span></td>
+                <td className="break-words px-3 py-3 font-semibold text-slate-700">{log.libraries?.name ?? "Biblioteca"}</td>
+                <td className="px-3 py-3 text-slate-700">{formatDateTime(log.check_in_at)}</td>
+                <td className="px-3 py-3 text-slate-700">{formatDateTime(log.check_out_at)}</td>
+                <td className="px-3 py-3 font-bold text-slate-900">{getTimeLabel(log)}</td>
+                <td className="px-3 py-3">
                   <span
                     className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${
                       log.status === "open" ? "bg-ulv-yellow text-ulv-blue" : "bg-green-50 text-green-800"
@@ -371,11 +425,12 @@ function AttendanceTable({ logs }: { logs: AdminAttendanceLog[] }) {
                     {getStatusLabel(log.status)}
                   </span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${getSourceClassName(log.source)}`}>
                     {getSourceLabel(log.source)}
                   </span>
                 </td>
+                <td className="px-3 py-3"><button type="button" onClick={() => onCorrect(log)} className="rounded-xl bg-ulv-yellow px-3 py-2 text-xs font-black text-ulv-blue">Corregir</button></td>
               </tr>
             ))
           )}
@@ -385,21 +440,34 @@ function AttendanceTable({ logs }: { logs: AdminAttendanceLog[] }) {
   );
 }
 
-function ActiveTodayTable({ logs }: { logs: AdminAttendanceLog[] }) {
+function ActiveTodayTable({ logs, onCorrect }: { logs: AdminAttendanceLog[]; onCorrect: (log: AdminAttendanceLog) => void }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200">
-      <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+    <div>
+      <div className="space-y-3 md:hidden">
+        {logs.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500">No hay usuarios activos hoy.</p> : null}
+        {logs.map((log) => (
+          <div key={log.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="text-base font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</h3>
+            <p className="mt-1 break-words text-sm font-semibold text-slate-600">{log.app_users?.email ?? "Sin correo"}</p>
+            <p className="mt-3 text-sm font-bold text-slate-700">{log.libraries?.name ?? "Biblioteca"}</p>
+            <p className="mt-2 text-sm text-slate-600">Entrada: {formatTime(log.check_in_at)}</p>
+            <p className="mt-1 text-sm font-black text-slate-900">{getCurrentOpenMinutes(log.check_in_at)}</p>
+            <button type="button" onClick={() => onCorrect(log)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-4 py-2 text-sm font-black text-ulv-blue">Corregir</button>
+          </div>
+        ))}
+      </div>
+      <table className="hidden w-full table-fixed border-collapse text-left text-sm md:table">
         <thead className="bg-ulv-blue text-white">
           <tr>
-            <th className="px-4 py-3 font-black">Usuario</th>
-            <th className="px-4 py-3 font-black">Correo</th>
-            <th className="px-4 py-3 font-black">Biblioteca</th>
-            <th className="px-4 py-3 font-black">Hora de entrada</th>
-            <th className="px-4 py-3 font-black">Tiempo actual aproximado</th>
-            <th className="px-4 py-3 font-black">Fuente</th>
+            <th className="rounded-l-2xl px-3 py-3 font-black">Usuario</th>
+            <th className="px-3 py-3 font-black">Biblioteca</th>
+            <th className="px-3 py-3 font-black">Entrada</th>
+            <th className="px-3 py-3 font-black">Tiempo actual</th>
+            <th className="px-3 py-3 font-black">Fuente</th>
+            <th className="rounded-r-2xl px-3 py-3 font-black">Acción</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-200 bg-white">
+        <tbody className="divide-y divide-slate-200">
           {logs.length === 0 ? (
             <tr>
               <td colSpan={6} className="px-4 py-8 text-center font-semibold text-slate-500">
@@ -409,21 +477,185 @@ function ActiveTodayTable({ logs }: { logs: AdminAttendanceLog[] }) {
           ) : (
             logs.map((log) => (
               <tr key={log.id} className="align-top">
-                <td className="px-4 py-3 font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</td>
-                <td className="px-4 py-3 font-semibold text-slate-600">{log.app_users?.email ?? "Sin correo"}</td>
-                <td className="px-4 py-3 font-semibold text-slate-700">{log.libraries?.name ?? "Biblioteca"}</td>
-                <td className="px-4 py-3 text-slate-700">{formatTime(log.check_in_at)}</td>
-                <td className="px-4 py-3 font-bold text-slate-900">{getCurrentOpenMinutes(log.check_in_at)}</td>
-                <td className="px-4 py-3">
+                <td className="break-words px-3 py-3"><span className="font-black text-ulv-blue">{log.app_users?.name ?? "Usuario sin nombre"}</span><span className="mt-1 block font-semibold text-slate-600">{log.app_users?.email ?? "Sin correo"}</span></td>
+                <td className="break-words px-3 py-3 font-semibold text-slate-700">{log.libraries?.name ?? "Biblioteca"}</td>
+                <td className="px-3 py-3 text-slate-700">{formatTime(log.check_in_at)}</td>
+                <td className="px-3 py-3 font-bold text-slate-900">{getCurrentOpenMinutes(log.check_in_at)}</td>
+                <td className="px-3 py-3">
                   <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${getSourceClassName(log.source)}`}>
                     {getSourceLabel(log.source)}
                   </span>
                 </td>
+                <td className="px-3 py-3"><button type="button" onClick={() => onCorrect(log)} className="rounded-xl bg-ulv-yellow px-3 py-2 text-xs font-black text-ulv-blue">Corregir</button></td>
               </tr>
             ))
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function CorrectionHistory({ corrections }: { corrections: AttendanceCorrection[] }) {
+  if (corrections.length === 0) {
+    return <p className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-500">Este registro aún no tiene correcciones.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {corrections.map((correction) => (
+        <div key={correction.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-black text-ulv-blue">{formatDateTime(correction.created_at)}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                Corregido por: {correction.corrected_by_user?.name ?? correction.corrected_by_user?.email ?? "Usuario no disponible"}
+              </p>
+            </div>
+            <span className="mt-2 inline-flex w-fit rounded-full bg-ulv-yellow px-3 py-1 text-xs font-black text-ulv-blue md:mt-0">{correction.reason}</span>
+          </div>
+          {correction.note ? <p className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm font-semibold text-slate-700">{correction.note}</p> : null}
+          <dl className="mt-4 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+            <div><dt className="font-black text-ulv-blue">Entrada anterior</dt><dd>{formatDateTime(correction.previous_check_in_at)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Salida anterior</dt><dd>{formatDateTime(correction.previous_check_out_at)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Tiempo anterior</dt><dd>{formatMinutes(correction.previous_total_minutes)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Estado anterior</dt><dd>{correction.previous_status ? getStatusLabel(correction.previous_status) : "Sin estado"}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Nueva entrada</dt><dd>{formatDateTime(correction.new_check_in_at)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Nueva salida</dt><dd>{formatDateTime(correction.new_check_out_at)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Nuevo tiempo</dt><dd>{formatMinutes(correction.new_total_minutes)}</dd></div>
+            <div><dt className="font-black text-ulv-blue">Nuevo estado</dt><dd>{getStatusLabel(correction.new_status)}</dd></div>
+          </dl>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CorrectionModal({ log, onClose, onSaved }: { log: AdminAttendanceLog; onClose: () => void; onSaved: (log: AdminAttendanceLog) => void }) {
+  const [newCheckInAt, setNewCheckInAt] = useState(toDateTimeLocal(log.check_in_at));
+  const [newCheckOutAt, setNewCheckOutAt] = useState(toDateTimeLocal(log.check_out_at));
+  const [reason, setReason] = useState(correctionReasons[0] ?? "");
+  const [customReason, setCustomReason] = useState("");
+  const [note, setNote] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  async function loadCorrections() {
+    setIsLoadingHistory(true);
+    const result = await getAttendanceCorrections(log.id);
+    setCorrections(result.data);
+    if (result.error) setModalError(result.error);
+    setIsLoadingHistory(false);
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void loadCorrections();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [log.id]);
+
+  async function handleSubmit() {
+    setModalError(null);
+    const cleanReason = reason === "Otro" ? customReason.trim() : reason.trim();
+
+    if (!newCheckInAt) {
+      setModalError("La nueva entrada es obligatoria.");
+      return;
+    }
+
+    if (!cleanReason) {
+      setModalError("El motivo es obligatorio.");
+      return;
+    }
+
+    if (newCheckOutAt && new Date(newCheckOutAt).getTime() <= new Date(newCheckInAt).getTime()) {
+      setModalError("La salida debe ser posterior a la entrada.");
+      return;
+    }
+
+    const confirmed = window.confirm("Esta acción modificará el registro de asistencia y quedará registrada en auditoría. ¿Deseas continuar?");
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    const result = await correctAttendanceLog({
+      attendanceLogId: log.id,
+      newCheckInAt: fromDateTimeLocal(newCheckInAt),
+      newCheckOutAt: newCheckOutAt ? fromDateTimeLocal(newCheckOutAt) : null,
+      reason: cleanReason,
+      note: note.trim() || null,
+    });
+
+    if (result.error || !result.data) {
+      setModalError(result.error ?? "No se pudo corregir el registro de asistencia.");
+      setIsSaving(false);
+      return;
+    }
+
+    await loadCorrections();
+    setIsSaving(false);
+    onSaved(result.data);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-3 md:items-center md:justify-center" role="dialog" aria-modal="true" aria-label="Corrección de asistencia">
+      <div className="max-h-[92vh] w-full max-w-full overflow-y-auto rounded-3xl bg-ulv-bg p-4 pb-24 shadow-xl md:max-w-5xl md:p-6 md:pb-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-bold text-ulv-blue">Corrección administrativa</p>
+            <h2 className="mt-1 text-2xl font-black text-ulv-blue">Registro de asistencia</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Toda corrección debe tener motivo y quedará en historial y auditoría.</p>
+          </div>
+          <button type="button" onClick={onClose} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-ulv-blue md:w-auto">Cancelar</button>
+        </div>
+
+        {modalError ? <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{modalError}</p> : null}
+
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <h3 className="text-lg font-black text-ulv-blue">Datos actuales</h3>
+            <dl className="mt-4 grid grid-cols-1 gap-3 text-sm md:grid-cols-2 lg:grid-cols-1">
+              <div><dt className="font-black text-ulv-blue">Usuario</dt><dd>{log.app_users?.name ?? "Usuario sin nombre"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Correo</dt><dd className="break-words">{log.app_users?.email ?? "Sin correo"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Biblioteca</dt><dd>{log.libraries?.name ?? "Biblioteca"}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Entrada actual</dt><dd>{formatDateTime(log.check_in_at)}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Salida actual</dt><dd>{formatDateTime(log.check_out_at)}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Tiempo actual</dt><dd>{getTimeLabel(log)}</dd></div>
+              <div><dt className="font-black text-ulv-blue">Estado actual</dt><dd>{getStatusLabel(log.status)}</dd></div>
+            </dl>
+          </section>
+
+          <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <h3 className="text-lg font-black text-ulv-blue">Nueva información</h3>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="block"><span className="text-sm font-bold text-ulv-blue">Nueva fecha y hora de entrada</span><input type="datetime-local" value={newCheckInAt} onChange={(event) => setNewCheckInAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /></label>
+              <label className="block"><span className="text-sm font-bold text-ulv-blue">Nueva fecha y hora de salida</span><input type="datetime-local" value={newCheckOutAt} onChange={(event) => setNewCheckOutAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /><span className="mt-1 block text-xs font-semibold text-slate-500">Déjala vacía para mantener el registro abierto.</span></label>
+              <label className="block"><span className="text-sm font-bold text-ulv-blue">Motivo de corrección</span><select value={reason} onChange={(event) => setReason(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10">{correctionReasons.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+              {reason === "Otro" ? <label className="block"><span className="text-sm font-bold text-ulv-blue">Especificar motivo</span><input value={customReason} onChange={(event) => setCustomReason(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /></label> : null}
+              <label className="block md:col-span-2"><span className="text-sm font-bold text-ulv-blue">Nota administrativa</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={4} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /></label>
+            </div>
+            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <button type="button" onClick={handleSubmit} disabled={isSaving} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] disabled:opacity-60">{isSaving ? "Guardando..." : "Guardar corrección"}</button>
+              <button type="button" onClick={onClose} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-ulv-blue">Cancelar</button>
+              <button type="button" onClick={() => setShowHistory((current) => !current)} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-blue px-5 py-3 text-sm font-black text-white">Ver historial de correcciones</button>
+            </div>
+          </section>
+        </div>
+
+        {showHistory ? (
+          <section className="mt-5 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div><h3 className="text-lg font-black text-ulv-blue">Historial de correcciones</h3><p className="text-sm text-slate-600">Cambios registrados para este registro.</p></div>
+              <button type="button" onClick={() => void loadCorrections()} disabled={isLoadingHistory} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-2 text-sm font-black text-ulv-blue md:w-auto">{isLoadingHistory ? "Cargando..." : "Actualizar historial"}</button>
+            </div>
+            <CorrectionHistory corrections={corrections} />
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -447,6 +679,8 @@ export function AdminAttendancePanel() {
   const [reportSource, setReportSource] = useState<SourceFilter>("all");
   const [reportSearch, setReportSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [selectedCorrectionLog, setSelectedCorrectionLog] = useState<AdminAttendanceLog | null>(null);
 
   async function loadData({ showLoading = true } = {}) {
     if (showLoading) {
@@ -456,6 +690,7 @@ export function AdminAttendancePanel() {
     }
 
     setError(null);
+    setFeedback(null);
 
     const userResult = await getCurrentAppUser();
     setCurrentUser(userResult.data);
@@ -517,6 +752,13 @@ export function AdminAttendancePanel() {
   });
   const todaySummary = getAdminAttendanceSummary(todayLogs);
 
+  function handleCorrectionSaved(updatedLog: AdminAttendanceLog) {
+    setLogs((currentLogs) => currentLogs.map((log) => (log.id === updatedLog.id ? updatedLog : log)));
+    setSelectedCorrectionLog(null);
+    setFeedback({ type: "success", message: "Registro de asistencia corregido correctamente." });
+    void loadData({ showLoading: false });
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -550,6 +792,7 @@ export function AdminAttendancePanel() {
   return (
     <div className="space-y-5">
       {error ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+      {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
 
       <Card className="p-3">
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -603,7 +846,7 @@ export function AdminAttendancePanel() {
             </button>
           </div>
           <div className="mt-5">
-            <ActiveTodayTable logs={activeTodayLogs} />
+            <ActiveTodayTable logs={activeTodayLogs} onCorrect={setSelectedCorrectionLog} />
           </div>
         </Card>
       ) : null}
@@ -632,7 +875,7 @@ export function AdminAttendancePanel() {
               <h2 className="text-xl font-black text-ulv-blue">Historial de asistencia</h2>
               <p className="mt-1 text-sm text-slate-600">{historyLogs.length} registros encontrados.</p>
             </div>
-            <AttendanceTable logs={historyLogs} />
+            <AttendanceTable logs={historyLogs} onCorrect={setSelectedCorrectionLog} />
           </Card>
         </div>
       ) : null}
@@ -666,10 +909,11 @@ export function AdminAttendancePanel() {
               <h2 className="text-xl font-black text-ulv-blue">Resultados</h2>
               <p className="mt-1 text-sm text-slate-600">{reportLogs.length} registros encontrados.</p>
             </div>
-            <AttendanceTable logs={reportLogs} />
+            <AttendanceTable logs={reportLogs} onCorrect={setSelectedCorrectionLog} />
           </Card>
         </div>
       ) : null}
+      {selectedCorrectionLog ? <CorrectionModal log={selectedCorrectionLog} onClose={() => setSelectedCorrectionLog(null)} onSaved={handleCorrectionSaved} /> : null}
     </div>
   );
 }
