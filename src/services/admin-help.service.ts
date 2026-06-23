@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 import { normalizeHelpArticle, type HelpAudience, type HelpCategory, type HelpResult, type HelpStatus, type PublicHelpArticle } from "@/services/help.service";
 
 export type AdminHelpArticle = PublicHelpArticle;
@@ -45,16 +46,27 @@ export async function getAdminLibrariesForHelp(): Promise<HelpResult<AdminHelpLi
 export async function createHelpArticle(input: HelpArticleInput): Promise<HelpResult<null>> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { data: null, error: "Debes iniciar sesión para crear artículos." };
-  const { error } = await supabase.from("help_articles").insert({ ...input, created_by: userData.user.id });
-  return { data: null, error: error ? helpError(error.message) : null };
+  const { data, error } = await supabase.from("help_articles").insert({ ...input, created_by: userData.user.id }).select("id, title").single();
+  if (error) return { data: null, error: helpError(error.message) };
+
+  void createAuditLog({ module: "help", action: "created", entity_table: "help_articles", entity_id: data.id, entity_label: data.title, description: "Artículo de ayuda creado" }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de ayuda:", auditError));
+  return { data: null, error: null };
 }
 
 export async function updateHelpArticle(articleId: string, input: HelpArticleInput): Promise<HelpResult<null>> {
   const { error } = await supabase.from("help_articles").update(input).eq("id", articleId);
-  return { data: null, error: error ? helpError(error.message) : null };
+  if (error) return { data: null, error: helpError(error.message) };
+
+  void createAuditLog({ module: "help", action: "updated", entity_table: "help_articles", entity_id: articleId, entity_label: input.title, description: "Artículo de ayuda actualizado" }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de ayuda:", auditError));
+  return { data: null, error: null };
 }
 
 export async function toggleHelpArticleStatus(articleId: string, status: HelpStatus): Promise<HelpResult<null>> {
-  const { error } = await supabase.from("help_articles").update({ status }).eq("id", articleId);
-  return { data: null, error: error ? "No se pudo cambiar el estado del artículo." : null };
+  const { data, error } = await supabase.from("help_articles").update({ status }).eq("id", articleId).select("id, title, status").single();
+  if (error) return { data: null, error: "No se pudo cambiar el estado del artículo." };
+
+  const action = status === "published" || status === "archived" ? status : "status_changed";
+  const description = status === "published" ? "Artículo de ayuda publicado" : status === "archived" ? "Artículo de ayuda archivado" : "Estado de artículo de ayuda actualizado";
+  void createAuditLog({ module: "help", action, entity_table: "help_articles", entity_id: data.id, entity_label: data.title, description, metadata: { newStatus: data.status } }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de ayuda:", auditError));
+  return { data: null, error: null };
 }

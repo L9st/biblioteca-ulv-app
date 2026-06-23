@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Download, FileSpreadsheet, RefreshCw, Search, ShieldAlert } from "lucide-react";
+import { createAuditLog } from "@/services/admin-audit.service";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import {
   buildLibraryReport,
@@ -160,6 +161,13 @@ export function AdminReportsPanel() {
 
     setFeedback(null);
     exportReportToCsv(filteredLogs);
+    void createAuditLog({
+      module: "reports",
+      action: "exported",
+      entity_table: "attendance_logs",
+      description: "Reporte de asistencia exportado",
+      metadata: { format: "csv", filters: { period, selectedDate, libraryId, status, source, search }, records: filteredLogs.length },
+    }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de reporte:", auditError));
   }
 
   function handleExportExcel() {
@@ -170,6 +178,13 @@ export function AdminReportsPanel() {
 
     setFeedback(null);
     exportReportToExcel(filteredLogs);
+    void createAuditLog({
+      module: "reports",
+      action: "exported",
+      entity_table: "attendance_logs",
+      description: "Reporte de asistencia exportado",
+      metadata: { format: "excel", filters: { period, selectedDate, libraryId, status, source, search }, records: filteredLogs.length },
+    }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de reporte:", auditError));
   }
 
   if (isLoading) {

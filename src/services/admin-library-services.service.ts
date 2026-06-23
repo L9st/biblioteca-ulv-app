@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 import {
   normalizeLibraryService,
   type LibraryServiceAudience,
@@ -55,16 +56,25 @@ export async function getAdminLibrariesForServices(): Promise<LibraryServiceResu
 export async function createLibraryService(input: LibraryServiceInput): Promise<LibraryServiceResult<null>> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { data: null, error: "Debes iniciar sesión para crear servicios." };
-  const { error } = await supabase.from("library_services").insert({ ...input, created_by: userData.user.id });
-  return { data: null, error: error ? serviceError(error.message) : null };
+  const { data, error } = await supabase.from("library_services").insert({ ...input, created_by: userData.user.id }).select("id, title").single();
+  if (error) return { data: null, error: serviceError(error.message) };
+
+  void createAuditLog({ module: "services", action: "created", entity_table: "library_services", entity_id: data.id, entity_label: data.title, description: "Servicio creado" }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de servicio:", auditError));
+  return { data: null, error: null };
 }
 
 export async function updateLibraryService(serviceId: string, input: LibraryServiceInput): Promise<LibraryServiceResult<null>> {
   const { error } = await supabase.from("library_services").update(input).eq("id", serviceId);
-  return { data: null, error: error ? serviceError(error.message) : null };
+  if (error) return { data: null, error: serviceError(error.message) };
+
+  void createAuditLog({ module: "services", action: "updated", entity_table: "library_services", entity_id: serviceId, entity_label: input.title, description: "Servicio actualizado" }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de servicio:", auditError));
+  return { data: null, error: null };
 }
 
 export async function toggleLibraryServiceStatus(serviceId: string, status: LibraryServiceStatus): Promise<LibraryServiceResult<null>> {
-  const { error } = await supabase.from("library_services").update({ status }).eq("id", serviceId);
-  return { data: null, error: error ? "No se pudo cambiar el estado del servicio." : null };
+  const { data, error } = await supabase.from("library_services").update({ status }).eq("id", serviceId).select("id, title, status").single();
+  if (error) return { data: null, error: "No se pudo cambiar el estado del servicio." };
+
+  void createAuditLog({ module: "services", action: "status_changed", entity_table: "library_services", entity_id: data.id, entity_label: data.title, description: "Estado de servicio actualizado", metadata: { newStatus: data.status } }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de servicio:", auditError));
+  return { data: null, error: null };
 }

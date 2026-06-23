@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 import {
   normalizeAnnouncement,
   type AnnouncementAudience,
@@ -55,16 +56,27 @@ export async function createAnnouncement(input: AnnouncementInput): Promise<Anno
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { data: null, error: "Debes iniciar sesión para crear avisos." };
 
-  const { error } = await supabase.from("announcements").insert({ ...input, created_by: userData.user.id });
-  return { data: null, error: error ? "No se pudo crear el aviso." : null };
+  const { data, error } = await supabase.from("announcements").insert({ ...input, created_by: userData.user.id }).select("id, title").single();
+  if (error) return { data: null, error: "No se pudo crear el aviso." };
+
+  void createAuditLog({ module: "announcements", action: "created", entity_table: "announcements", entity_id: data.id, entity_label: data.title, description: "Aviso creado" }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de aviso:", auditError));
+  return { data: null, error: null };
 }
 
 export async function updateAnnouncement(announcementId: string, input: AnnouncementInput): Promise<AnnouncementResult<null>> {
   const { error } = await supabase.from("announcements").update(input).eq("id", announcementId);
-  return { data: null, error: error ? "No se pudo actualizar el aviso." : null };
+  if (error) return { data: null, error: "No se pudo actualizar el aviso." };
+
+  void createAuditLog({ module: "announcements", action: "updated", entity_table: "announcements", entity_id: announcementId, entity_label: input.title, description: "Aviso actualizado" }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de aviso:", auditError));
+  return { data: null, error: null };
 }
 
 export async function toggleAnnouncementStatus(announcementId: string, status: AnnouncementStatus): Promise<AnnouncementResult<null>> {
-  const { error } = await supabase.from("announcements").update({ status }).eq("id", announcementId);
-  return { data: null, error: error ? "No se pudo cambiar el estado del aviso." : null };
+  const { data, error } = await supabase.from("announcements").update({ status }).eq("id", announcementId).select("id, title, status").single();
+  if (error) return { data: null, error: "No se pudo cambiar el estado del aviso." };
+
+  const action = status === "published" || status === "archived" ? status : "status_changed";
+  const description = status === "published" ? "Aviso publicado" : status === "archived" ? "Aviso archivado" : "Estado de aviso actualizado";
+  void createAuditLog({ module: "announcements", action, entity_table: "announcements", entity_id: data.id, entity_label: data.title, description, metadata: { newStatus: data.status } }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de aviso:", auditError));
+  return { data: null, error: null };
 }

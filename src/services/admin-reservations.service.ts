@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 import { type ReservableSpace, type ReservationStatus } from "@/services/reservations.service";
 
 export type AdminSpaceReservation = {
@@ -74,12 +75,38 @@ export async function getAdminSpaceReservations(): Promise<AdminReservationsResu
 }
 
 export async function updateSpaceReservationStatus(reservationId: string, status: ReservationStatus, adminNotes?: string): Promise<AdminReservationsResult<null>> {
+  const { data: reservation } = await supabase
+    .from("space_reservations")
+    .select("id, space_id, library_spaces (name)")
+    .eq("id", reservationId)
+    .maybeSingle();
+
   const { error } = await supabase.rpc("review_space_reservation", {
     p_reservation_id: reservationId,
     p_status: status,
     p_admin_notes: adminNotes ?? null,
   });
   if (error) return { data: null, error: getAdminReservationUpdateError(error.message) };
+
+  const action = status === "approved" || status === "rejected" || status === "cancelled" || status === "completed" ? status : "updated";
+  const descriptions: Record<string, string> = {
+    approved: "Reserva aprobada",
+    rejected: "Reserva rechazada",
+    cancelled: "Reserva cancelada por personal",
+    completed: "Reserva marcada como completada",
+    updated: "Reserva actualizada",
+  };
+  const space = Array.isArray(reservation?.library_spaces) ? reservation?.library_spaces[0] : reservation?.library_spaces;
+
+  void createAuditLog({
+    module: "reservations",
+    action,
+    entity_table: "space_reservations",
+    entity_id: reservationId,
+    entity_label: space?.name ?? `Reserva ${reservationId}`,
+    description: descriptions[action],
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de reserva:", auditError));
+
   return { data: null, error: null };
 }
 

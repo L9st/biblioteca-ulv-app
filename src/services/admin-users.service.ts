@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 
 export type AppUserRole = "student" | "librarian" | "admin" | "superadmin";
 
@@ -127,6 +128,7 @@ export async function getAdminUsers(): Promise<AdminUsersResult<AdminAppUser[]>>
 }
 
 export async function updateUserRole(userId: string, role: AppUserRole): Promise<AdminUsersResult<AdminAppUser | null>> {
+  const previousUser = await supabase.from("app_users").select("id, email, role").eq("id", userId).maybeSingle();
   const { data, error } = await supabase
     .from("app_users")
     .update({ role })
@@ -139,10 +141,23 @@ export async function updateUserRole(userId: string, role: AppUserRole): Promise
     return { data: null, error: getUpdateErrorMessage(error.message) };
   }
 
-  return { data: normalizeAdminAppUser(data as RawAdminAppUser), error: null };
+  const updatedUser = normalizeAdminAppUser(data as RawAdminAppUser);
+
+  void createAuditLog({
+    module: "users",
+    action: "role_changed",
+    entity_table: "app_users",
+    entity_id: updatedUser.id,
+    entity_label: updatedUser.email,
+    description: "Rol de usuario actualizado",
+    metadata: { previousRole: previousUser.data?.role ?? null, newRole: updatedUser.role },
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de rol:", auditError));
+
+  return { data: updatedUser, error: null };
 }
 
 export async function updateUserStatus(userId: string, status: AppUserStatus): Promise<AdminUsersResult<AdminAppUser | null>> {
+  const previousUser = await supabase.from("app_users").select("id, email, status").eq("id", userId).maybeSingle();
   const { data, error } = await supabase
     .from("app_users")
     .update({ status })
@@ -155,5 +170,17 @@ export async function updateUserStatus(userId: string, status: AppUserStatus): P
     return { data: null, error: getUpdateErrorMessage(error.message) };
   }
 
-  return { data: normalizeAdminAppUser(data as RawAdminAppUser), error: null };
+  const updatedUser = normalizeAdminAppUser(data as RawAdminAppUser);
+
+  void createAuditLog({
+    module: "users",
+    action: "status_changed",
+    entity_table: "app_users",
+    entity_id: updatedUser.id,
+    entity_label: updatedUser.email,
+    description: "Estado de usuario actualizado",
+    metadata: { previousStatus: previousUser.data?.status ?? null, newStatus: updatedUser.status },
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de estado:", auditError));
+
+  return { data: updatedUser, error: null };
 }

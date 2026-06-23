@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bell, Building2, CalendarCheck, CircleHelp, ClipboardList, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarCheck, CircleHelp, ClipboardList, FileClock, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -95,6 +95,14 @@ const adminCards: AdminCard[] = [
     buttonLabel: "Ver reportes",
     status: "En construcción",
     icon: BarChart3,
+  },
+  {
+    title: "Auditoría",
+    description: "Consulta el historial de acciones administrativas realizadas en la app.",
+    href: "/admin/auditoria",
+    buttonLabel: "Ver auditoría",
+    status: "Disponible",
+    icon: FileClock,
   },
 ];
 

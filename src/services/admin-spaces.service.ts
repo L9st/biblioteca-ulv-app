@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 
 export type LibraryStatus = "active" | "inactive";
 
@@ -180,7 +181,18 @@ export async function createLibrarySpace(input: LibrarySpaceInput): Promise<Admi
     return { data: null, error: getSpacesErrorMessage(error.message) };
   }
 
-  return { data: normalizeLibrarySpace(data as RawAdminLibrarySpace), error: null };
+  const space = normalizeLibrarySpace(data as RawAdminLibrarySpace);
+
+  void createAuditLog({
+    module: "spaces",
+    action: "created",
+    entity_table: "library_spaces",
+    entity_id: space.id,
+    entity_label: space.name,
+    description: "Espacio creado",
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de espacio:", auditError));
+
+  return { data: space, error: null };
 }
 
 export async function updateLibrarySpace(
@@ -217,7 +229,18 @@ export async function updateLibrarySpace(
     return { data: null, error: getSpacesErrorMessage(error.message) };
   }
 
-  return { data: normalizeLibrarySpace(data as RawAdminLibrarySpace), error: null };
+  const space = normalizeLibrarySpace(data as RawAdminLibrarySpace);
+
+  void createAuditLog({
+    module: "spaces",
+    action: "updated",
+    entity_table: "library_spaces",
+    entity_id: space.id,
+    entity_label: space.name,
+    description: "Espacio actualizado",
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de espacio:", auditError));
+
+  return { data: space, error: null };
 }
 
 export async function toggleLibrarySpaceStatus(
@@ -254,5 +277,17 @@ export async function toggleLibrarySpaceStatus(
     return { data: null, error: getSpacesErrorMessage(error.message) };
   }
 
-  return { data: normalizeLibrarySpace(data as RawAdminLibrarySpace), error: null };
+  const space = normalizeLibrarySpace(data as RawAdminLibrarySpace);
+
+  void createAuditLog({
+    module: "spaces",
+    action: "status_changed",
+    entity_table: "library_spaces",
+    entity_id: space.id,
+    entity_label: space.name,
+    description: "Estado de espacio actualizado",
+    metadata: { newStatus: space.status },
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de estado de espacio:", auditError));
+
+  return { data: space, error: null };
 }

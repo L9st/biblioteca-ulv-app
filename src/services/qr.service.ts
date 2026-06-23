@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { createAuditLog } from "@/services/admin-audit.service";
 
 export type QrLibrary = {
   id: string;
@@ -197,6 +198,16 @@ export async function generateAttendanceQrToken(
       error: "La respuesta del servidor no tiene el formato esperado.",
     };
   }
+
+  void createAuditLog({
+    module: "qr",
+    action: "qr_generated",
+    entity_table: "attendance_qr_tokens",
+    entity_id: token.token_id,
+    entity_label: token.library_name,
+    description: "QR de asistencia generado",
+    metadata: { library_id: token.library_id, expires_at: token.expires_at },
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de QR:", auditError));
 
   return { data: token, error: null };
 }
