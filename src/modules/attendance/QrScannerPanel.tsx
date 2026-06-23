@@ -15,7 +15,10 @@ type ScannerDiagnostics = {
   currentUrl: string;
   isSecure: boolean;
   hasMediaDevices: boolean;
+  cameraCount: number;
   userAgent: string;
+  lastError: string;
+  technicalDetail: string;
 };
 
 function getSuccessMessage(result: AttendanceQrValidation) {
@@ -33,14 +36,21 @@ function getScannerDiagnostics(): ScannerDiagnostics {
     currentUrl,
     isSecure,
     hasMediaDevices,
+    cameraCount: 0,
     userAgent,
+    lastError: "Sin errores recientes",
+    technicalDetail: "Sin detalle técnico",
   };
+}
+
+function mergeDiagnostics(update: Partial<ScannerDiagnostics>) {
+  return (current: ScannerDiagnostics): ScannerDiagnostics => ({ ...current, ...update });
 }
 
 function getCameraErrorMessage(error: unknown): string {
   if (error instanceof DOMException) {
     if (error.name === "NotAllowedError") {
-      return "Permiso de cámara denegado. Activa el permiso de cámara en el navegador.";
+      return "Permiso de cámara denegado. Revisa los permisos del navegador y permite el acceso a la cámara.";
     }
 
     if (error.name === "NotFoundError") {
@@ -51,12 +61,39 @@ function getCameraErrorMessage(error: unknown): string {
       return "La cámara está siendo usada por otra aplicación o no se pudo iniciar.";
     }
 
-    if (error.name === "SecurityError") {
-      return "La cámara fue bloqueada por seguridad. Verifica que estés usando HTTPS.";
+    if (error.name === "OverconstrainedError") {
+      return "No se pudo usar la cámara trasera con esta configuración. Intenta seleccionar otra cámara.";
     }
+
+    if (error.name === "SecurityError") {
+      return "La cámara fue bloqueada por seguridad del navegador.";
+    }
+
+    return `No se pudo abrir la cámara: ${error.name}`;
   }
 
-  return "No se pudo abrir la cámara. Intenta abrir la app desde Chrome o Safari con HTTPS.";
+  if (error instanceof Error) {
+    return error.message || "No se pudo abrir la cámara.";
+  }
+
+  return "No se pudo abrir la cámara. Intenta permitir la cámara o usa el ingreso manual.";
+}
+
+function getTechnicalErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+
+  return String(error);
+}
+
+async function loadVideoDevices(): Promise<MediaDeviceInfo[]> {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    return [];
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices.filter((device) => device.kind === "videoinput");
 }
 
 async function stopScanner(scanner: import("html5-qrcode").Html5Qrcode | null) {
@@ -65,10 +102,16 @@ async function stopScanner(scanner: import("html5-qrcode").Html5Qrcode | null) {
   }
 
   try {
-    await scanner.stop();
+    if (scanner.isScanning) {
+      await scanner.stop();
+    }
     scanner.clear();
   } catch {
-    scanner.clear();
+    try {
+      scanner.clear();
+    } catch {
+      // Ignorar errores de limpieza para evitar dejar la pantalla bloqueada.
+    }
   }
 }
 
@@ -77,12 +120,17 @@ export function QrScannerPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [message, setMessage] = useState("");
   const [manualCode, setManualCode] = useState("");
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [result, setResult] = useState<AttendanceQrValidation | null>(null);
   const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics>({
     currentUrl: "No disponible",
     isSecure: false,
     hasMediaDevices: false,
+    cameraCount: 0,
     userAgent: "No disponible",
+    lastError: "Sin errores recientes",
+    technicalDetail: "Sin detalle técnico",
   });
   const scannerRef = useRef<import("html5-qrcode").Html5Qrcode | null>(null);
   const hasProcessedScanRef = useRef(false);
@@ -138,7 +186,7 @@ export function QrScannerPanel() {
 
   async function handleOpenCamera() {
     const currentDiagnostics = getScannerDiagnostics();
-    setDiagnostics(currentDiagnostics);
+    setDiagnostics(mergeDiagnostics(currentDiagnostics));
     setResult(null);
     setMessage("");
     hasProcessedScanRef.current = false;
@@ -155,27 +203,73 @@ export function QrScannerPanel() {
       return;
     }
 
+    const readerElement = document.getElementById(scannerElementId);
+
+    if (!readerElement) {
+      const errorMessage = "No se encontró el contenedor del escáner. Intenta recargar la página.";
+      setStatus("error");
+      setMessage(errorMessage);
+      setDiagnostics(mergeDiagnostics({ lastError: errorMessage, technicalDetail: `Elemento no encontrado: ${scannerElementId}` }));
+      return;
+    }
+
     try {
       setStatus("scanning");
       await stopScanner(scannerRef.current);
+      scannerRef.current = null;
+
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      permissionStream.getTracks().forEach((track) => track.stop());
+
+      const devices = await loadVideoDevices();
+      setVideoDevices(devices);
+      setDiagnostics(mergeDiagnostics({ cameraCount: devices.length, lastError: "Sin errores recientes", technicalDetail: "Permiso de cámara concedido" }));
 
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode(scannerElementId);
       scannerRef.current = scanner;
 
-      await scanner.start(
-        { facingMode: { ideal: "environment" } },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          void processQrValue(decodedText, "camera");
-        },
-        () => undefined
-      );
+      const scanConfig = { fps: 10, qrbox: { width: 250, height: 250 } };
+      const selectedDevice = selectedDeviceId || devices[0]?.deviceId || "";
+
+      try {
+        await scanner.start(
+          selectedDeviceId ? selectedDeviceId : { facingMode: "environment" },
+          scanConfig,
+          (decodedText) => {
+            void processQrValue(decodedText, "camera");
+          },
+          () => undefined
+        );
+      } catch (environmentError) {
+        if (!selectedDevice) {
+          throw environmentError;
+        }
+
+        await stopScanner(scannerRef.current);
+        const fallbackScanner = new Html5Qrcode(scannerElementId);
+        scannerRef.current = fallbackScanner;
+        setSelectedDeviceId(selectedDevice);
+
+        await fallbackScanner.start(
+          selectedDevice,
+          scanConfig,
+          (decodedText) => {
+            void processQrValue(decodedText, "camera");
+          },
+          () => undefined
+        );
+      }
     } catch (error) {
       await stopScanner(scannerRef.current);
       scannerRef.current = null;
+      const errorMessage = getCameraErrorMessage(error);
       setStatus("error");
-      setMessage(getCameraErrorMessage(error));
+      setMessage(errorMessage);
+      setDiagnostics(mergeDiagnostics({
+        lastError: errorMessage,
+        technicalDetail: getTechnicalErrorMessage(error),
+      }));
     }
   }
 
@@ -185,6 +279,17 @@ export function QrScannerPanel() {
     hasProcessedScanRef.current = false;
     setStatus("ready");
     setMessage("");
+  }
+
+  async function handleSelectDevice(deviceId: string) {
+    setSelectedDeviceId(deviceId);
+
+    if (status === "scanning") {
+      await stopScanner(scannerRef.current);
+      scannerRef.current = null;
+      setStatus("ready");
+      setMessage("Cámara seleccionada. Presiona Abrir cámara para iniciar nuevamente.");
+    }
   }
 
   function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
