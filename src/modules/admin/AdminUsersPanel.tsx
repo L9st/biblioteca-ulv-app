@@ -4,13 +4,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, Search, ShieldAlert, Users } from "lucide-react";
 import {
+  assignLibraryToUser,
+  getAllLibrariesForAssignment,
   getAdminUsers,
   getCurrentAppUser,
+  getUserLibraryAssignments,
+  removeLibraryFromUser,
   updateUserRole,
   updateUserStatus,
+  type AssignmentLibrary,
   type AdminAppUser,
   type AppUserRole,
   type AppUserStatus,
+  type UserLibraryAssignment,
 } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -78,6 +84,8 @@ export function AdminUsersPanel() {
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
   const [users, setUsers] = useState<AdminAppUser[]>([]);
+  const [libraries, setLibraries] = useState<AssignmentLibrary[]>([]);
+  const [assignmentsByUserId, setAssignmentsByUserId] = useState<Record<string, UserLibraryAssignment[]>>({});
   const [search, setSearch] = useState("");
   const [selectedRole, setSelectedRole] = useState<RoleFilter>("all");
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>("all");
@@ -107,11 +115,20 @@ export function AdminUsersPanel() {
       return;
     }
 
-    const usersResult = await getAdminUsers();
+    const [usersResult, librariesResult] = await Promise.all([getAdminUsers(), getAllLibrariesForAssignment()]);
     setUsers(usersResult.data);
+    setLibraries(librariesResult.data);
 
-    if (usersResult.error) {
-      setFeedback({ type: "error", message: usersResult.error });
+    const assignmentEntries = await Promise.all(
+      usersResult.data.map(async (user) => {
+        const result = await getUserLibraryAssignments(user.id);
+        return [user.id, result.data] as const;
+      })
+    );
+    setAssignmentsByUserId(Object.fromEntries(assignmentEntries));
+
+    if (usersResult.error || librariesResult.error) {
+      setFeedback({ type: "error", message: usersResult.error ?? librariesResult.error ?? "No se pudieron cargar los usuarios." });
     }
 
     setIsLoading(false);
@@ -159,6 +176,42 @@ export function AdminUsersPanel() {
     } else {
       setUsers((currentUsers) => currentUsers.map((user) => (user.id === userId ? result.data ?? user : user)));
       setFeedback({ type: "success", message: "Estado actualizado correctamente" });
+    }
+
+    setUpdatingUserId(null);
+  }
+
+  function getUserAssignments(userId: string) {
+    return assignmentsByUserId[userId] ?? [];
+  }
+
+  function getUserLibrariesText(user: AdminAppUser) {
+    if (user.role === "superadmin") return "Acceso global";
+    if (user.role === "student") return "No requiere";
+
+    const assignedLibraries = getUserAssignments(user.id).map((assignment) => assignment.libraries?.name).filter((name): name is string => Boolean(name));
+    return assignedLibraries.length > 0 ? assignedLibraries.join(", ") : "Sin asignar";
+  }
+
+  function isLibraryAssigned(userId: string, libraryId: string) {
+    return getUserAssignments(userId).some((assignment) => assignment.library_id === libraryId);
+  }
+
+  async function handleLibraryToggle(user: AdminAppUser, library: AssignmentLibrary, checked: boolean) {
+    if (!currentUser || !canEditUsers(currentUser.role)) {
+      setFeedback({ type: "error", message: "No tienes permisos para modificar bibliotecas asignadas." });
+      return;
+    }
+
+    setUpdatingUserId(user.id);
+    const result = checked ? await assignLibraryToUser(user.id, library.id) : await removeLibraryFromUser(user.id, library.id);
+
+    if (result.error) {
+      setFeedback({ type: "error", message: result.error });
+    } else {
+      const assignmentsResult = await getUserLibraryAssignments(user.id);
+      setAssignmentsByUserId((current) => ({ ...current, [user.id]: assignmentsResult.data }));
+      setFeedback({ type: "success", message: checked ? "Biblioteca asignada correctamente." : "Asignación eliminada correctamente." });
     }
 
     setUpdatingUserId(null);
@@ -294,14 +347,62 @@ export function AdminUsersPanel() {
           <p className="text-sm text-slate-600">{filteredUsers.length} usuarios encontrados.</p>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-[860px] w-full border-collapse text-left text-sm">
+        <div className="space-y-3 md:hidden">
+          {filteredUsers.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm font-semibold text-slate-500">No hay usuarios registrados</div>
+          ) : null}
+          {filteredUsers.map((user) => {
+            const isUpdating = updatingUserId === user.id;
+            const canAssignLibraries = canEdit && user.role !== "student" && user.role !== "superadmin";
+
+            return (
+              <article key={user.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="break-words text-base font-black text-ulv-blue">{user.name}</h3>
+                    <p className="mt-1 break-words text-sm font-semibold text-slate-600">{user.email || "Sin correo"}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${getRoleBadgeClassName(user.role)}`}>{user.role}</span>
+                </div>
+                <dl className="mt-4 grid grid-cols-1 gap-3 text-sm">
+                  <div><dt className="font-bold text-slate-500">Estado</dt><dd><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${getStatusBadgeClassName(user.status)}`}>{user.status}</span></dd></div>
+                  <div><dt className="font-bold text-slate-500">Bibliotecas</dt><dd className="break-words font-black text-slate-900">{getUserLibrariesText(user)}</dd></div>
+                </dl>
+                <div className="mt-4 rounded-2xl bg-slate-50 p-3">
+                  <p className="text-sm font-black text-ulv-blue">Bibliotecas asignadas</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    {libraries.map((library) => (
+                      <label key={library.id} className={`flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold ${!canAssignLibraries ? "opacity-70" : ""}`}>
+                        <input type="checkbox" checked={isLibraryAssigned(user.id, library.id)} disabled={!canAssignLibraries || isUpdating} onChange={(event) => void handleLibraryToggle(user, library, event.target.checked)} className="h-4 w-4 accent-ulv-blue" />
+                        <span className="min-w-0 break-words">{library.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {canEdit ? (
+                  <div className="mt-4 grid gap-2">
+                    <select value={user.role} onChange={(event) => void handleRoleChange(user.id, event.target.value as AppUserRole)} disabled={isUpdating} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                      {roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+                    </select>
+                    <select value={user.status} onChange={(event) => void handleStatusChange(user.id, event.target.value as AppUserStatus)} disabled={isUpdating} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
+                      {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                    </select>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden rounded-2xl border border-slate-200 md:block">
+          <table className="w-full table-fixed border-collapse text-left text-sm">
             <thead className="bg-ulv-blue text-white">
               <tr>
                 <th className="px-4 py-3 font-black">Nombre</th>
                 <th className="px-4 py-3 font-black">Correo</th>
                 <th className="px-4 py-3 font-black">Rol</th>
                 <th className="px-4 py-3 font-black">Estado</th>
+                <th className="px-4 py-3 font-black">Bibliotecas</th>
                 <th className="px-4 py-3 font-black">Creado</th>
                 <th className="px-4 py-3 font-black">Acciones</th>
               </tr>
@@ -309,18 +410,19 @@ export function AdminUsersPanel() {
             <tbody className="divide-y divide-slate-200 bg-white">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center font-semibold text-slate-500">
+                  <td colSpan={7} className="px-4 py-8 text-center font-semibold text-slate-500">
                     No hay usuarios registrados
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => {
                   const isUpdating = updatingUserId === user.id;
+                  const canAssignLibraries = canEdit && user.role !== "student" && user.role !== "superadmin";
 
                   return (
                     <tr key={user.id} className="align-top">
-                      <td className="px-4 py-3 font-black text-ulv-blue">{user.name}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-600">{user.email || "Sin correo"}</td>
+                      <td className="break-words px-4 py-3 font-black text-ulv-blue">{user.name}</td>
+                      <td className="break-words px-4 py-3 font-semibold text-slate-600">{user.email || "Sin correo"}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${getRoleBadgeClassName(user.role)}`}>
                           {user.role}
@@ -330,6 +432,19 @@ export function AdminUsersPanel() {
                         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${getStatusBadgeClassName(user.status)}`}>
                           {user.status}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="break-words text-sm font-bold text-slate-700">{getUserLibrariesText(user)}</p>
+                        {user.role !== "student" && user.role !== "superadmin" ? (
+                          <div className="mt-3 grid grid-cols-1 gap-2">
+                            {libraries.map((library) => (
+                              <label key={library.id} className="flex items-start gap-2 text-xs font-bold text-slate-700">
+                                <input type="checkbox" checked={isLibraryAssigned(user.id, library.id)} disabled={!canAssignLibraries || isUpdating} onChange={(event) => void handleLibraryToggle(user, library, event.target.checked)} className="mt-0.5 h-4 w-4 accent-ulv-blue" />
+                                <span className="break-words">{library.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{formatDate(user.created_at)}</td>
                       <td className="px-4 py-3">

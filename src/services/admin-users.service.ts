@@ -16,6 +16,20 @@ export type AdminAppUser = {
   updated_at: string | null;
 };
 
+export type AssignmentLibrary = {
+  id: string;
+  name: string;
+  code: string;
+};
+
+export type UserLibraryAssignment = {
+  id: string;
+  user_id: string;
+  library_id: string;
+  created_at: string;
+  libraries: AssignmentLibrary | null;
+};
+
 export type AdminUsersResult<T> = {
   data: T;
   error: string | null;
@@ -33,6 +47,14 @@ type RawAdminAppUser = {
   created_at: string;
   updated_at: string | null;
 };
+
+type RawUserLibraryAssignment = Omit<UserLibraryAssignment, "libraries"> & {
+  libraries: AssignmentLibrary | AssignmentLibrary[] | null;
+};
+
+function normalizeRelation<T>(value: T | T[] | null): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
 
 function isAppUserRole(value: string | null): value is AppUserRole {
   return appUserRoles.includes(value as AppUserRole);
@@ -52,6 +74,14 @@ function normalizeAdminAppUser(user: RawAdminAppUser): AdminAppUser {
     created_at: user.created_at,
     updated_at: user.updated_at,
   };
+}
+
+function normalizeUserLibraryAssignment(assignment: RawUserLibraryAssignment): UserLibraryAssignment {
+  return { ...assignment, libraries: normalizeRelation(assignment.libraries) };
+}
+
+function canModifyLibraryAssignments(role: AppUserRole) {
+  return role === "admin" || role === "superadmin";
 }
 
 function getAdminUsersErrorMessage(message: string) {
@@ -126,6 +156,99 @@ export async function getAdminUsers(): Promise<AdminUsersResult<AdminAppUser[]>>
   }
 
   return { data: ((data ?? []) as RawAdminAppUser[]).map(normalizeAdminAppUser), error: null };
+}
+
+export async function getUserLibraryAssignments(userId: string): Promise<AdminUsersResult<UserLibraryAssignment[]>> {
+  const { data, error } = await supabase
+    .from("app_user_libraries")
+    .select("id, user_id, library_id, created_at, libraries (id, name, code)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: [], error: getAdminUsersErrorMessage(error.message) };
+  return { data: ((data ?? []) as RawUserLibraryAssignment[]).map(normalizeUserLibraryAssignment), error: null };
+}
+
+export async function getAllLibrariesForAssignment(): Promise<AdminUsersResult<AssignmentLibrary[]>> {
+  const { data, error } = await supabase.from("libraries").select("id, name, code").order("name", { ascending: true });
+  if (error) return { data: [], error: "No se pudieron cargar las bibliotecas." };
+  return { data: data ?? [], error: null };
+}
+
+export async function assignLibraryToUser(userId: string, libraryId: string): Promise<AdminUsersResult<UserLibraryAssignment | null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
+  const currentUserResult = await getCurrentAppUser();
+  if (!currentUserResult.data || !canModifyLibraryAssignments(currentUserResult.data.role)) {
+    return { data: null, error: "No tienes permisos para modificar bibliotecas asignadas." };
+  }
+
+  const [{ data: user }, { data: library }] = await Promise.all([
+    supabase.from("app_users").select("id, email").eq("id", userId).maybeSingle(),
+    supabase.from("libraries").select("id, name, code").eq("id", libraryId).maybeSingle(),
+  ]);
+
+  if (!library) return { data: null, error: "No se pudo asignar la biblioteca." };
+
+  const { data: existing } = await supabase
+    .from("app_user_libraries")
+    .select("id, user_id, library_id, created_at, libraries (id, name, code)")
+    .eq("user_id", userId)
+    .eq("library_id", libraryId)
+    .maybeSingle();
+
+  if (existing) return { data: normalizeUserLibraryAssignment(existing as RawUserLibraryAssignment), error: null };
+
+  const { data, error } = await supabase
+    .from("app_user_libraries")
+    .insert({ user_id: userId, library_id: libraryId, created_by: currentUserResult.data.id })
+    .select("id, user_id, library_id, created_at, libraries (id, name, code)")
+    .single();
+
+  if (error) return { data: null, error: getUpdateErrorMessage(error.message) };
+
+  const assignment = normalizeUserLibraryAssignment(data as RawUserLibraryAssignment);
+  void createAuditLog({
+    module: "users",
+    action: "library_assigned",
+    entity_table: "app_user_libraries",
+    entity_id: assignment.id,
+    entity_label: typeof user?.email === "string" ? user.email : userId,
+    description: "Biblioteca asignada al usuario",
+    metadata: { userId, libraryId, libraryName: library.name },
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de biblioteca asignada:", auditError));
+
+  return { data: assignment, error: null };
+}
+
+export async function removeLibraryFromUser(userId: string, libraryId: string): Promise<AdminUsersResult<null>> {
+  if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
+  const currentUserResult = await getCurrentAppUser();
+  if (!currentUserResult.data || !canModifyLibraryAssignments(currentUserResult.data.role)) {
+    return { data: null, error: "No tienes permisos para modificar bibliotecas asignadas." };
+  }
+
+  const [{ data: user }, { data: library }, { data: assignment }] = await Promise.all([
+    supabase.from("app_users").select("id, email").eq("id", userId).maybeSingle(),
+    supabase.from("libraries").select("id, name, code").eq("id", libraryId).maybeSingle(),
+    supabase.from("app_user_libraries").select("id").eq("user_id", userId).eq("library_id", libraryId).maybeSingle(),
+  ]);
+
+  const { error } = await supabase.from("app_user_libraries").delete().eq("user_id", userId).eq("library_id", libraryId);
+  if (error) return { data: null, error: getUpdateErrorMessage(error.message) };
+
+  void createAuditLog({
+    module: "users",
+    action: "library_unassigned",
+    entity_table: "app_user_libraries",
+    entity_id: typeof assignment?.id === "string" ? assignment.id : null,
+    entity_label: typeof user?.email === "string" ? user.email : userId,
+    description: "Biblioteca removida del usuario",
+    metadata: { userId, libraryId, libraryName: library?.name ?? "Biblioteca" },
+  }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de biblioteca removida:", auditError));
+
+  return { data: null, error: null };
 }
 
 export async function updateUserRole(userId: string, role: AppUserRole): Promise<AdminUsersResult<AdminAppUser | null>> {
