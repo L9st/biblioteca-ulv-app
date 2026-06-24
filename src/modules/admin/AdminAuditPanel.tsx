@@ -21,6 +21,7 @@ const moduleLabels: Record<string, string> = {
   reports: "Reportes",
   attendance: "Asistencia",
   system: "Sistema",
+  support: "Soporte",
 };
 
 const actionLabels: Record<string, string> = {
@@ -45,10 +46,12 @@ const actionLabels: Record<string, string> = {
   access_denied: "Acceso denegado",
   schedule_updated: "Horario actualizado",
   rules_updated: "Reglas actualizadas",
+  replied: "Respondido",
+  internal_note_added: "Nota interna agregada",
 };
 
-const moduleOptions = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports", "attendance", "system"];
-const actionOptions = ["created", "updated", "deleted", "published", "archived", "approved", "rejected", "cancelled", "completed", "role_changed", "status_changed", "qr_generated", "exported", "login", "email_sent", "email_failed", "library_assigned", "library_unassigned", "access_denied", "schedule_updated", "rules_updated"];
+const moduleOptions = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports", "attendance", "system", "support"];
+const actionOptions = ["created", "updated", "deleted", "published", "archived", "approved", "rejected", "cancelled", "completed", "role_changed", "status_changed", "qr_generated", "exported", "login", "email_sent", "email_failed", "library_assigned", "library_unassigned", "access_denied", "schedule_updated", "rules_updated", "replied", "internal_note_added"];
 const summaryModules = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports"];
 
 function canAccess(role: AppUserRole) {

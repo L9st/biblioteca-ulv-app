@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, BookOpen, CalendarCheck, ChevronDown, CircleHelp, Clock3, ExternalLink, LogIn, MapPinned, Megaphone, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { Bell, BookOpen, CalendarCheck, ChevronDown, CircleHelp, Clock3, ExternalLink, Headphones, LogIn, MapPinned, Megaphone, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   getCurrentDashboardUser,
@@ -198,6 +198,7 @@ export function HomeDashboard() {
     ...(hasSession
       ? [
           { title: "Reservas", description: "Solicita espacios disponibles.", href: "/reservas-espacios", buttonLabel: "Reservar", icon: CalendarCheck },
+          { title: "Soporte", description: "Reporta problemas o solicita ayuda sobre el uso de la app.", href: "/soporte", buttonLabel: "Solicitar ayuda", icon: Headphones },
           { title: "Notificaciones", description: "Actividad de tu cuenta.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
         ]
       : []),

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bell, Building2, CalendarCheck, CalendarClock, CircleHelp, ClipboardList, FileClock, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarCheck, CalendarClock, CircleHelp, ClipboardList, FileClock, Headphones, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -87,6 +87,14 @@ const adminCards: AdminCard[] = [
     buttonLabel: "Administrar ayuda",
     status: "Disponible",
     icon: CircleHelp,
+  },
+  {
+    title: "Soporte",
+    description: "Gestiona solicitudes e incidencias reportadas por usuarios.",
+    href: "/admin/soporte",
+    buttonLabel: "Gestionar soporte",
+    status: "Disponible",
+    icon: Headphones,
   },
   {
     title: "Notificaciones",
