@@ -5,6 +5,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { filterLibrariesForCurrentUser, getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import {
   generateAttendanceQrToken,
@@ -44,6 +45,7 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
   const [libraries, setLibraries] = useState<QrLibrary[]>([]);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
   const [qrToken, setQrToken] = useState<AttendanceQrToken | null>(null);
   const [qrImages, setQrImages] = useState<QrImages | null>(null);
@@ -63,9 +65,11 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
       return;
     }
 
-    const activeLibraries = await getActiveLibraries();
-    setLibraries(activeLibraries);
-    setSelectedLibraryId((current) => current || activeLibraries[0]?.id || "");
+    const [activeLibraries, context] = await Promise.all([getActiveLibraries(), getLibraryAccessContext()]);
+    const visibleLibraries = filterLibrariesForCurrentUser(activeLibraries, context);
+    setAccessContext(context);
+    setLibraries(visibleLibraries);
+    setSelectedLibraryId((current) => current || visibleLibraries[0]?.id || "");
     setIsLoading(false);
   }, []);
 
@@ -84,6 +88,11 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
   const handleGenerate = useCallback(async (libraryId = selectedLibraryId) => {
     if (!libraryId) {
       setError("Selecciona una biblioteca para generar el QR.");
+      return;
+    }
+
+    if (accessContext && !accessContext.canAccessAll && !accessContext.allowedLibraryIds.has(libraryId)) {
+      setError("No tienes permiso para generar QR para esta biblioteca.");
       return;
     }
 
@@ -114,7 +123,7 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
     setQrImages(images);
     setSecondsRemaining(getSecondsRemaining(result.data.expires_at));
     setIsGenerating(false);
-  }, [buildQrImages, publicAppUrl, selectedLibraryId]);
+  }, [accessContext, buildQrImages, publicAppUrl, selectedLibraryId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -185,6 +194,7 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
   const appQrValue = qrToken ? `ULV-ATTENDANCE:${qrToken.token}` : "";
   const webQrValue = qrToken ? `${publicAppUrl}/horas/qr/${qrToken.token}` : "";
   const libraryOptions = libraries.map((library) => ({ label: library.name, value: library.id }));
+  const noLibrariesMessage = accessContext ? noAssignedLibrariesMessage(accessContext) : null;
 
   function selectLibrary(libraryId: string) {
     setSelectedLibraryId(libraryId);
@@ -217,6 +227,7 @@ export function AdminQrPanel({ publicAppUrl }: AdminQrPanelProps) {
         </div>
 
         {error ? <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+        {noLibrariesMessage ? <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">No tienes bibliotecas asignadas para generar QR.</p> : null}
         {!isProductionQrUrl(publicAppUrl) ? (
           <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-900">
             URL pública actual: {publicAppUrl}. Configura `NEXT_PUBLIC_APP_URL` con una URL HTTPS de producción antes de generar QR.

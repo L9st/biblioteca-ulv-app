@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
 import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
+import { auditLibraryAccessDenied, filterLibrariesForCurrentUser, getLibraryAccessContext } from "@/services/library-access.service";
 
 export type LibraryStatus = "active" | "inactive";
 
@@ -102,6 +103,14 @@ function getSpacesErrorMessage(message: string) {
   return "No se pudo completar la operación de espacios.";
 }
 
+async function canManageLibraryId(libraryId: string, reason: string, entityLabel?: string | null): Promise<AdminSpacesResult<null> | null> {
+  const accessContext = await getLibraryAccessContext();
+  if (accessContext.canAccessAll || accessContext.allowedLibraryIds.has(libraryId)) return null;
+
+  void auditLibraryAccessDenied({ libraryId, reason, entityLabel }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
+  return { data: null, error: "No tienes permiso para administrar espacios de esta biblioteca." };
+}
+
 export async function getAdminLibraries(): Promise<AdminSpacesResult<AdminLibrary[]>> {
   const { data, error } = await supabase
     .from("libraries")
@@ -113,7 +122,8 @@ export async function getAdminLibraries(): Promise<AdminSpacesResult<AdminLibrar
     return { data: [], error: getSpacesErrorMessage(error.message) };
   }
 
-  return { data: data ?? [], error: null };
+  const accessContext = await getLibraryAccessContext();
+  return { data: filterLibrariesForCurrentUser(data ?? [], accessContext), error: null };
 }
 
 export async function getAdminLibrarySpaces(): Promise<AdminSpacesResult<AdminLibrarySpace[]>> {
@@ -149,11 +159,16 @@ export async function getAdminLibrarySpaces(): Promise<AdminSpacesResult<AdminLi
     return { data: [], error: getSpacesErrorMessage(error.message) };
   }
 
-  return { data: ((data ?? []) as RawAdminLibrarySpace[]).map(normalizeLibrarySpace), error: null };
+  const accessContext = await getLibraryAccessContext();
+  const spaces = ((data ?? []) as RawAdminLibrarySpace[]).map(normalizeLibrarySpace);
+  return { data: accessContext.canAccessAll ? spaces : spaces.filter((space) => accessContext.allowedLibraryIds.has(space.library_id)), error: null };
 }
 
 export async function createLibrarySpace(input: LibrarySpaceInput): Promise<AdminSpacesResult<AdminLibrarySpace | null>> {
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
+  const denied = await canManageLibraryId(input.library_id, "Intento de crear espacio en biblioteca no asignada", input.name);
+  if (denied) return denied;
 
   const { data, error } = await supabase
     .from("library_spaces")
@@ -204,6 +219,15 @@ export async function updateLibrarySpace(
 ): Promise<AdminSpacesResult<AdminLibrarySpace | null>> {
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
 
+  const { data: currentSpace } = await supabase.from("library_spaces").select("id, library_id, name").eq("id", spaceId).maybeSingle();
+  if (currentSpace?.library_id) {
+    const deniedCurrent = await canManageLibraryId(currentSpace.library_id, "Intento de editar espacio de biblioteca no asignada", currentSpace.name);
+    if (deniedCurrent) return deniedCurrent;
+  }
+
+  const deniedTarget = await canManageLibraryId(input.library_id, "Intento de mover espacio a biblioteca no asignada", input.name);
+  if (deniedTarget) return deniedTarget;
+
   const { data, error } = await supabase
     .from("library_spaces")
     .update(input)
@@ -253,6 +277,12 @@ export async function toggleLibrarySpaceStatus(
   status: LibrarySpaceStatus
 ): Promise<AdminSpacesResult<AdminLibrarySpace | null>> {
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
+  const { data: currentSpace } = await supabase.from("library_spaces").select("id, library_id, name").eq("id", spaceId).maybeSingle();
+  if (currentSpace?.library_id) {
+    const denied = await canManageLibraryId(currentSpace.library_id, "Intento de cambiar estado de espacio de biblioteca no asignada", currentSpace.name);
+    if (denied) return denied;
+  }
 
   const { data, error } = await supabase
     .from("library_spaces")

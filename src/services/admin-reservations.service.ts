@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
 import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import { queueEmailNotification } from "@/services/email-notifications.service";
+import { auditLibraryAccessDenied, getLibraryAccessContext } from "@/services/library-access.service";
 import { type ReservableSpace, type ReservationStatus } from "@/services/reservations.service";
 
 export type AdminSpaceReservation = {
@@ -138,7 +139,9 @@ export async function getAdminSpaceReservations(): Promise<AdminReservationsResu
     .order("start_at", { ascending: false })
     .limit(500);
   if (error) return { data: [], error: getAdminReservationLoadError(error.message) };
-  return { data: ((data ?? []) as RawAdminReservation[]).map(normalizeReservation), error: null };
+  const accessContext = await getLibraryAccessContext();
+  const reservations = ((data ?? []) as RawAdminReservation[]).map(normalizeReservation);
+  return { data: accessContext.canAccessAll ? reservations : reservations.filter((reservation) => accessContext.allowedLibraryIds.has(reservation.library_id)), error: null };
 }
 
 export async function updateSpaceReservationStatus(reservationId: string, status: ReservationStatus, adminNotes?: string): Promise<AdminReservationsResult<null>> {
@@ -146,9 +149,16 @@ export async function updateSpaceReservationStatus(reservationId: string, status
 
   const { data: reservation } = await supabase
     .from("space_reservations")
-    .select("id, start_at, end_at, requester:app_users!space_reservations_user_id_fkey (id, name, email), library_spaces (name), libraries (name)")
+    .select("id, library_id, start_at, end_at, requester:app_users!space_reservations_user_id_fkey (id, name, email), library_spaces (name), libraries (name)")
     .eq("id", reservationId)
     .maybeSingle();
+
+  const reservationLibraryId = typeof reservation?.library_id === "string" ? reservation.library_id : null;
+  const accessContext = await getLibraryAccessContext();
+  if (reservationLibraryId && !accessContext.canAccessAll && !accessContext.allowedLibraryIds.has(reservationLibraryId)) {
+    void auditLibraryAccessDenied({ libraryId: reservationLibraryId, reason: "Intento de actualizar reserva de biblioteca no asignada", entityLabel: reservationId }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
+    return { data: null, error: "No tienes permiso para administrar reservas de esta biblioteca." };
+  }
 
   const { error } = await supabase.rpc("review_space_reservation", {
     p_reservation_id: reservationId,
@@ -184,7 +194,9 @@ export async function updateSpaceReservationStatus(reservationId: string, status
 export async function getAdminReservableSpaces(): Promise<AdminReservationsResult<ReservableSpace[]>> {
   const { data, error } = await supabase.from("library_spaces").select("id, library_id, name, slug, description, capacity, location_hint, is_reservable, status, libraries (id, name, code)").eq("is_reservable", true).order("name", { ascending: true });
   if (error) return { data: [], error: getAdminReservationLoadError(error.message) };
-  return { data: ((data ?? []) as RawAdminSpace[]).map(normalizeSpace), error: null };
+  const accessContext = await getLibraryAccessContext();
+  const spaces = ((data ?? []) as RawAdminSpace[]).map(normalizeSpace);
+  return { data: accessContext.canAccessAll ? spaces : spaces.filter((space) => accessContext.allowedLibraryIds.has(space.library_id)), error: null };
 }
 
 export async function getAdminReservationsForDate(input: AdminReservationsForDateInput): Promise<AdminReservationsResult<AdminSpaceReservation[]>> {
@@ -218,14 +230,23 @@ export async function getAdminReservationsForDate(input: AdminReservationsForDat
     .gt("end_at", range.start)
     .order("start_at", { ascending: true });
 
-  if (input.libraryId && input.libraryId !== "all") query = query.eq("library_id", input.libraryId);
+  const accessContext = await getLibraryAccessContext();
+  if (input.libraryId && input.libraryId !== "all") {
+    if (!accessContext.canAccessAll && !accessContext.allowedLibraryIds.has(input.libraryId)) {
+      void auditLibraryAccessDenied({ libraryId: input.libraryId, reason: "Intento de consultar calendario de reservas de biblioteca no asignada" }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
+      return { data: [], error: "No tienes permiso para ver reservas de esta biblioteca." };
+    }
+    query = query.eq("library_id", input.libraryId);
+  }
   if (input.spaceId && input.spaceId !== "all") query = query.eq("space_id", input.spaceId);
   if (input.status && input.status !== "all") query = query.eq("status", input.status);
 
   const { data, error } = await query;
   if (error) return { data: [], error: getAdminReservationLoadError(error.message) };
 
-  const reservations = ((data ?? []) as RawAdminReservation[]).map(normalizeReservation);
+  const reservations = ((data ?? []) as RawAdminReservation[])
+    .map(normalizeReservation)
+    .filter((reservation) => accessContext.canAccessAll || accessContext.allowedLibraryIds.has(reservation.library_id));
   const cleanSearch = input.search?.trim().toLowerCase() ?? "";
 
   return {

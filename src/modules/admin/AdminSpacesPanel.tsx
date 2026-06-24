@@ -18,6 +18,7 @@ import {
 import { Card } from "@/app/ui/Card";
 import { StatCard } from "@/app/cards/StatCard";
 import { DropdownSelect } from "@/app/ui/DropdownSelect";
+import { getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 
 type ActiveTab = "summary" | "spaces" | "form";
 type StatusFilter = "all" | LibrarySpaceStatus;
@@ -127,6 +128,7 @@ export function AdminSpacesPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [libraries, setLibraries] = useState<AdminLibrary[]>([]);
   const [spaces, setSpaces] = useState<AdminLibrarySpace[]>([]);
   const [libraryFilter, setLibraryFilter] = useState("all");
@@ -159,10 +161,12 @@ export function AdminSpacesPanel() {
       return;
     }
 
-    const [librariesResult, spacesResult] = await Promise.all([getAdminLibraries(), getAdminLibrarySpaces()]);
+    const [librariesResult, spacesResult, context] = await Promise.all([getAdminLibraries(), getAdminLibrarySpaces(), getLibraryAccessContext()]);
+    setAccessContext(context);
     setLibraries(librariesResult.data);
     setSpaces(spacesResult.data);
     setForm((current) => ({ ...current, library_id: current.library_id || librariesResult.data[0]?.id || "" }));
+    if (!context.canAccessAll && librariesResult.data.length === 1) setLibraryFilter(librariesResult.data[0].id);
 
     if (librariesResult.error || spacesResult.error) {
       setFeedback({ type: "error", message: librariesResult.error ?? spacesResult.error ?? "No se pudieron cargar los espacios." });
@@ -299,6 +303,7 @@ export function AdminSpacesPanel() {
   return (
     <div className="space-y-5">
       {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
+      {accessContext ? noAssignedLibrariesMessage(accessContext) ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{noAssignedLibrariesMessage(accessContext)}</p> : null : null}
 
       <Card className="p-3">
         <div className="flex gap-2 overflow-x-auto pb-1">

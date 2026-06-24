@@ -26,6 +26,7 @@ import { StatCard } from "@/app/cards/StatCard";
 import { exportReportToCsv, exportReportToExcel } from "@/utils/export-reports";
 import { DropdownSelect } from "@/app/ui/DropdownSelect";
 import { AdminReportCharts } from "@/modules/admin/report-charts/AdminReportCharts";
+import { getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 
 type ActiveTab = "summary" | "charts" | "library" | "user" | "export";
 type StatusFilter = "all" | "open" | "closed";
@@ -112,6 +113,7 @@ export function AdminReportsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [libraries, setLibraries] = useState<ReportLibrary[]>([]);
   const [logs, setLogs] = useState<ReportAttendanceLog[]>([]);
   const [chartData, setChartData] = useState<ReportChartData | null>(null);
@@ -145,11 +147,13 @@ export function AdminReportsPanel() {
       return;
     }
 
-    const [librariesResult, logsResult, chartResult] = await Promise.all([getReportLibraries(), getReportAttendanceLogs(), getReportChartData()]);
+    const [librariesResult, logsResult, chartResult, context] = await Promise.all([getReportLibraries(), getReportAttendanceLogs(), getReportChartData(), getLibraryAccessContext()]);
+    setAccessContext(context);
     setLibraries(librariesResult.data);
     setLogs(logsResult.data);
     setChartData(chartResult.data);
     setChartError(chartResult.error);
+    if (!context.canAccessAll && librariesResult.data.length === 1) setLibraryId(librariesResult.data[0].id);
 
     if (librariesResult.error || logsResult.error || chartResult.error) {
       setFeedback({ type: "error", message: librariesResult.error ?? logsResult.error ?? chartResult.error ?? "No se pudieron cargar los reportes." });
@@ -257,6 +261,7 @@ export function AdminReportsPanel() {
   return (
     <div className="space-y-5">
       {feedback ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{feedback.message}</p> : null}
+      {accessContext ? noAssignedLibrariesMessage(accessContext) ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{noAssignedLibrariesMessage(accessContext)}</p> : null : null}
 
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

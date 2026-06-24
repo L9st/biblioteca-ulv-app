@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
+import { auditLibraryAccessDenied, getLibraryAccessContext } from "@/services/library-access.service";
 
 export type AdminAttendanceUser = {
   name: string | null;
@@ -196,6 +197,15 @@ async function getAdminAttendanceLogById(attendanceLogId: string): Promise<Admin
 
 export async function correctAttendanceLog(input: CorrectAttendanceLogInput): Promise<AdminServiceResult<AdminAttendanceLog | null>> {
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
+  const currentLog = await getAdminAttendanceLogById(input.attendanceLogId);
+  if (currentLog.error || !currentLog.data) return currentLog;
+
+  const accessContext = await getLibraryAccessContext();
+  if (!accessContext.canAccessAll && !accessContext.allowedLibraryIds.has(currentLog.data.library_id)) {
+    void auditLibraryAccessDenied({ libraryId: currentLog.data.library_id, reason: "Intento de corregir asistencia de biblioteca no asignada", entityLabel: input.attendanceLogId }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
+    return { data: null, error: "No tienes permiso para corregir registros de esta biblioteca." };
+  }
 
   const { error } = await supabase.rpc("correct_attendance_log", {
     p_attendance_log_id: input.attendanceLogId,

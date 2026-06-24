@@ -15,6 +15,7 @@ import {
 } from "@/services/admin-reservations.service";
 import { Card } from "@/app/ui/Card";
 import { DropdownSelect } from "@/app/ui/DropdownSelect";
+import { getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 
 type PeriodFilter = "today" | "week" | "month" | "all";
 type StatusFilter = "all" | ReservationStatus;
@@ -82,6 +83,7 @@ export function AdminReservationsPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [reservations, setReservations] = useState<AdminSpaceReservation[]>([]);
   const [calendarReservations, setCalendarReservations] = useState<AdminSpaceReservation[]>([]);
   const [spaces, setSpaces] = useState<SpaceFilterOption[]>([]);
@@ -117,9 +119,16 @@ export function AdminReservationsPanel() {
       return;
     }
 
-    const [reservationsResult, spacesResult] = await Promise.all([getAdminSpaceReservations(), getAdminReservableSpaces()]);
+    const [reservationsResult, spacesResult, context] = await Promise.all([getAdminSpaceReservations(), getAdminReservableSpaces(), getLibraryAccessContext()]);
+    const visibleSpaces = spacesResult.data.map((space) => ({ id: space.id, name: space.name, library_id: space.library_id, libraries: space.libraries }));
+    const visibleLibraries = Array.from(new Map(visibleSpaces.map((space) => [space.libraries?.id ?? space.library_id, space.libraries ?? { id: space.library_id, name: "Biblioteca", code: "" }])).values());
+    setAccessContext(context);
     setReservations(reservationsResult.data);
-    setSpaces(spacesResult.data.map((space) => ({ id: space.id, name: space.name, library_id: space.library_id, libraries: space.libraries })));
+    setSpaces(visibleSpaces);
+    if (!context.canAccessAll && visibleLibraries.length === 1) {
+      setLibraryId(visibleLibraries[0].id);
+      setCalendarLibraryId(visibleLibraries[0].id);
+    }
 
     if (reservationsResult.error || spacesResult.error) {
       setFeedback({ type: "error", message: reservationsResult.error ?? spacesResult.error ?? "No se pudieron cargar las reservas administrativas." });
@@ -205,6 +214,7 @@ export function AdminReservationsPanel() {
   return (
     <div className="space-y-5">
       {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
+      {accessContext ? noAssignedLibrariesMessage(accessContext) ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{noAssignedLibrariesMessage(accessContext)}</p> : null : null}
 
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

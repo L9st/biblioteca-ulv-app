@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
 import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
+import { auditLibraryAccessDenied, getLibraryAccessContext } from "@/services/library-access.service";
 
 export type QrLibrary = {
   id: string;
@@ -179,6 +180,12 @@ export async function generateAttendanceQrToken(
   expiresSeconds = 60
 ): Promise<GenerateAttendanceQrResult> {
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
+
+  const accessContext = await getLibraryAccessContext();
+  if (!accessContext.canAccessAll && !accessContext.allowedLibraryIds.has(libraryId)) {
+    void auditLibraryAccessDenied({ libraryId, reason: "Intento de generar QR para biblioteca no asignada" }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
+    return { data: null, error: "No tienes permiso para generar QR para esta biblioteca." };
+  }
 
   const { data, error } = await supabase.rpc("generate_attendance_qr_token", {
     p_library_id: libraryId,

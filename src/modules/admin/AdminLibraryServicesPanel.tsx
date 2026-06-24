@@ -25,6 +25,7 @@ import {
   type LibraryServiceCategory,
   type LibraryServiceStatus,
 } from "@/services/library-services.service";
+import { getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 
 type ActiveTab = "summary" | "services" | "form";
 type CategoryFilter = "all" | LibraryServiceCategory;
@@ -129,6 +130,7 @@ export function AdminLibraryServicesPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [libraries, setLibraries] = useState<AdminLibraryForServices[]>([]);
   const [services, setServices] = useState<AdminLibraryService[]>([]);
   const [libraryFilter, setLibraryFilter] = useState("all");
@@ -154,9 +156,11 @@ export function AdminLibraryServicesPanel() {
       return;
     }
 
-    const [librariesResult, servicesResult] = await Promise.all([getAdminLibrariesForServices(), getAdminLibraryServices()]);
+    const [librariesResult, servicesResult, context] = await Promise.all([getAdminLibrariesForServices(), getAdminLibraryServices(), getLibraryAccessContext()]);
+    setAccessContext(context);
     setLibraries(librariesResult.data);
     setServices(servicesResult.data);
+    if (!context.canAccessAll && librariesResult.data.length > 0) setForm((current) => ({ ...current, library_id: current.library_id === "all" ? librariesResult.data[0].id : current.library_id }));
     if (librariesResult.error || servicesResult.error) setFeedback({ type: "error", message: librariesResult.error ?? servicesResult.error ?? "No se pudieron cargar los servicios." });
     setIsLoading(false);
     setIsRefreshing(false);
@@ -180,9 +184,10 @@ export function AdminLibraryServicesPanel() {
     inactive: services.filter((service) => service.status === "inactive").length,
     general: services.filter((service) => service.library_id === null).length,
   }), [services]);
+  const canUseGeneralServices = accessContext?.canAccessAll ?? false;
 
   function resetForm() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, library_id: canUseGeneralServices ? "all" : libraries[0]?.id ?? "" });
     setEditingId(null);
     setIsSlugTouched(false);
     setActiveTab("form");
@@ -233,6 +238,7 @@ export function AdminLibraryServicesPanel() {
   return (
     <div className="space-y-5">
       {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
+      {accessContext ? noAssignedLibrariesMessage(accessContext) ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{noAssignedLibrariesMessage(accessContext)}</p> : null : null}
       <section className="rounded-3xl border border-ulv-blue bg-ulv-blue p-5 text-white shadow-sm"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-bold text-ulv-yellow">Administración de servicios</p><h1 className="mt-2 text-3xl font-black">Servicios de biblioteca</h1><p className="mt-2 text-sm leading-6 text-white/85">Administra servicios como préstamos, orientación, capacitación y apoyo al usuario.</p></div><button type="button" onClick={() => void loadData({ showLoading: false })} disabled={isRefreshing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/25 px-4 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} aria-hidden="true" />Refrescar</button></div></section>
       <Card className="p-3"><div className="flex gap-2 overflow-x-auto pb-1">{tabs.map((tab) => <button key={tab.id} type="button" onClick={() => (tab.id === "form" ? resetForm() : setActiveTab(tab.id))} className={`min-h-11 shrink-0 rounded-2xl px-4 py-2 text-sm font-black ${activeTab === tab.id ? "bg-ulv-yellow text-ulv-blue" : "border border-slate-200 bg-white text-ulv-blue"}`}>{tab.label}</button>)}</div></Card>
 

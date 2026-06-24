@@ -25,6 +25,7 @@ import {
   type AnnouncementStatus,
   type AnnouncementType,
 } from "@/services/announcements.service";
+import { getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 
 type ActiveTab = "summary" | "announcements" | "form";
 type FilterStatus = "all" | AnnouncementStatus;
@@ -125,6 +126,7 @@ export function AdminAnnouncementsPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>([]);
   const [libraries, setLibraries] = useState<AdminAnnouncementLibrary[]>([]);
   const [libraryFilter, setLibraryFilter] = useState("all");
@@ -150,9 +152,13 @@ export function AdminAnnouncementsPanel() {
       return;
     }
 
-    const [librariesResult, announcementsResult] = await Promise.all([getAdminAnnouncementLibraries(), getAdminAnnouncements()]);
+    const [librariesResult, announcementsResult, context] = await Promise.all([getAdminAnnouncementLibraries(), getAdminAnnouncements(), getLibraryAccessContext()]);
+    setAccessContext(context);
     setLibraries(librariesResult.data);
     setAnnouncements(announcementsResult.data);
+    if (!context.canAccessAll && librariesResult.data.length > 0) {
+      setForm((current) => ({ ...current, library_id: current.library_id === "all" ? librariesResult.data[0].id : current.library_id }));
+    }
 
     if (librariesResult.error || announcementsResult.error) {
       setFeedback({ type: "error", message: librariesResult.error ?? announcementsResult.error ?? "No se pudieron cargar los avisos." });
@@ -186,9 +192,19 @@ export function AdminAnnouncementsPanel() {
     }),
     [announcements],
   );
+  const canUseGeneralAnnouncements = accessContext?.canAccessAll ?? false;
+  const libraryFilterOptions = [
+    { label: "Todas las bibliotecas", value: "all" },
+    ...(canUseGeneralAnnouncements ? [{ label: "Avisos generales", value: "general" }] : []),
+    ...libraries.map((library) => ({ label: library.name, value: library.id })),
+  ];
+  const formLibraryOptions = [
+    ...(canUseGeneralAnnouncements ? [{ label: "Todas las bibliotecas", value: "all" }] : []),
+    ...libraries.map((library) => ({ label: library.name, value: library.id })),
+  ];
 
   function resetForm() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, library_id: canUseGeneralAnnouncements ? "all" : libraries[0]?.id ?? "" });
     setEditingId(null);
     setActiveTab("form");
   }
@@ -267,6 +283,7 @@ export function AdminAnnouncementsPanel() {
   return (
     <div className="space-y-5">
       {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
+      {accessContext ? noAssignedLibrariesMessage(accessContext) ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{noAssignedLibrariesMessage(accessContext)}</p> : null : null}
 
       <section className="rounded-3xl border border-ulv-blue bg-ulv-blue p-5 text-white shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -316,7 +333,7 @@ export function AdminAnnouncementsPanel() {
         <section className="space-y-5">
           <Card>
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={[{ label: "Todas las bibliotecas", value: "all" }, { label: "Avisos generales", value: "general" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]} value={libraryFilter} onChange={setLibraryFilter} /></div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={libraryFilterOptions} value={libraryFilter} onChange={setLibraryFilter} /></div>
               <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Estado" options={[{ label: "Todos", value: "all" }, { label: announcementStatusLabels.draft, value: "draft" }, { label: announcementStatusLabels.published, value: "published" }, { label: announcementStatusLabels.archived, value: "archived" }]} value={statusFilter} onChange={(value) => setStatusFilter(value as FilterStatus)} /></div>
               <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Tipo" options={[{ label: "Todos", value: "all" }, { label: announcementTypeLabels.info, value: "info" }, { label: announcementTypeLabels.warning, value: "warning" }, { label: announcementTypeLabels.event, value: "event" }, { label: announcementTypeLabels.maintenance, value: "maintenance" }]} value={typeFilter} onChange={(value) => setTypeFilter(value as FilterType)} /></div>
               <label><span className="text-sm font-bold text-ulv-blue">Búsqueda</span><span className="mt-2 flex min-h-12 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4"><Search className="h-4 w-4 text-slate-400" aria-hidden="true" /><input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full bg-transparent text-sm font-semibold outline-none" placeholder="Título o contenido" /></span></label>
@@ -350,7 +367,7 @@ export function AdminAnnouncementsPanel() {
         <Card>
           <div className="mb-5 flex items-start gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue"><FileText className="h-5 w-5" aria-hidden="true" /></span><div><h2 className="text-xl font-black text-ulv-blue">{editingId ? "Editar aviso" : "Nuevo aviso"}</h2><p className="mt-1 text-sm text-slate-600">Completa el comunicado y define si aplica a una biblioteca o a todas.</p></div></div>
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]} value={form.library_id} onChange={(value) => setForm((current) => ({ ...current, library_id: value }))} /></div>
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={formLibraryOptions} value={form.library_id} onChange={(value) => setForm((current) => ({ ...current, library_id: value }))} /></div>
             <label><span className="text-sm font-bold text-ulv-blue">Título</span><input required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /></label>
             <label className="md:col-span-2"><span className="text-sm font-bold text-ulv-blue">Resumen</span><input value={form.summary} onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))} className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /></label>
             <label className="md:col-span-2"><span className="text-sm font-bold text-ulv-blue">Contenido</span><textarea required value={form.content} onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))} className="mt-2 min-h-36 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10" /></label>

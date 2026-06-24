@@ -17,6 +17,7 @@ import {
 import { Card } from "@/app/ui/Card";
 import { StatCard } from "@/app/cards/StatCard";
 import { DropdownSelect } from "@/app/ui/DropdownSelect";
+import { filterLibrariesForCurrentUser, getLibraryAccessContext, noAssignedLibrariesMessage, type LibraryAccessContext } from "@/services/library-access.service";
 
 type ActiveTab = "summary" | "active" | "history" | "reports";
 type PeriodFilter = "today" | "week" | "month" | "date" | "all";
@@ -666,6 +667,7 @@ export function AdminAttendancePanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
+  const [accessContext, setAccessContext] = useState<LibraryAccessContext | null>(null);
   const [logs, setLogs] = useState<AdminAttendanceLog[]>([]);
   const [libraries, setLibraries] = useState<AdminLibraryFilter[]>([]);
   const [historyLibraryId, setHistoryLibraryId] = useState("all");
@@ -703,10 +705,17 @@ export function AdminAttendancePanel() {
       return;
     }
 
-    const [logsResult, librariesResult] = await Promise.all([getAdminAttendanceLogs(), getActiveLibrariesForFilter()]);
+    const [logsResult, librariesResult, context] = await Promise.all([getAdminAttendanceLogs(), getActiveLibrariesForFilter(), getLibraryAccessContext()]);
+    const visibleLibraries = filterLibrariesForCurrentUser(librariesResult.data, context);
+    const visibleLogs = context.canAccessAll ? logsResult.data : logsResult.data.filter((log) => context.allowedLibraryIds.has(log.library_id));
 
-    setLogs(logsResult.data);
-    setLibraries(librariesResult.data);
+    setAccessContext(context);
+    setLogs(visibleLogs);
+    setLibraries(visibleLibraries);
+    if (!context.canAccessAll && visibleLibraries.length === 1) {
+      setHistoryLibraryId(visibleLibraries[0].id);
+      setReportLibraryId(visibleLibraries[0].id);
+    }
 
     if (logsResult.error || librariesResult.error) {
       setError(logsResult.error ?? librariesResult.error);
@@ -792,6 +801,7 @@ export function AdminAttendancePanel() {
   return (
     <div className="space-y-5">
       {error ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+      {accessContext ? noAssignedLibrariesMessage(accessContext) ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{noAssignedLibrariesMessage(accessContext)}</p> : null : null}
       {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
 
       <Card className="p-3">

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { auditLibraryAccessDenied, filterLibrariesForCurrentUser, getLibraryAccessContext } from "@/services/library-access.service";
 
 export type ReportPeriod = "today" | "week" | "month" | "custom" | "all";
 
@@ -210,7 +211,8 @@ export async function getReportLibraries(): Promise<ReportsResult<ReportLibrary[
     return { data: [], error: getReportsErrorMessage(error.message) };
   }
 
-  return { data: data ?? [], error: null };
+  const accessContext = await getLibraryAccessContext();
+  return { data: filterLibrariesForCurrentUser(data ?? [], accessContext), error: null };
 }
 
 export async function getReportAttendanceLogs(): Promise<ReportsResult<ReportAttendanceLog[]>> {
@@ -239,7 +241,9 @@ export async function getReportAttendanceLogs(): Promise<ReportsResult<ReportAtt
     return { data: [], error: getReportsErrorMessage(error.message) };
   }
 
-  return { data: ((data ?? []) as RawReportAttendanceLog[]).map(normalizeLog), error: null };
+  const accessContext = await getLibraryAccessContext();
+  const logs = ((data ?? []) as RawReportAttendanceLog[]).map(normalizeLog);
+  return { data: accessContext.canAccessAll ? logs : logs.filter((log) => accessContext.allowedLibraryIds.has(log.library_id)), error: null };
 }
 
 function matchesChartSearch(values: Array<string | null | undefined>, search?: string | null) {
@@ -288,7 +292,13 @@ export async function getReportChartData(filters: ReportChartFilters = {}): Prom
     .order("start_at", { ascending: false })
     .limit(1000);
 
+  const accessContext = await getLibraryAccessContext();
+
   if (filters.libraryId && filters.libraryId !== "all") {
+    if (!accessContext.canAccessAll && !accessContext.allowedLibraryIds.has(filters.libraryId)) {
+      void auditLibraryAccessDenied({ libraryId: filters.libraryId, reason: "Intento de consultar reportes de biblioteca no asignada" }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
+      return { data: { attendanceLogs: [], reservations: [] }, error: "No tienes permiso para ver reportes de esta biblioteca." };
+    }
     attendanceQuery = attendanceQuery.eq("library_id", filters.libraryId);
     reservationsQuery = reservationsQuery.eq("library_id", filters.libraryId);
   }
@@ -313,9 +323,11 @@ export async function getReportChartData(filters: ReportChartFilters = {}): Prom
 
   const attendanceLogs = ((attendanceResult.data ?? []) as RawReportAttendanceLog[])
     .map(normalizeLog)
+    .filter((log) => accessContext.canAccessAll || accessContext.allowedLibraryIds.has(log.library_id))
     .filter((log) => matchesChartSearch([log.app_users?.name, log.app_users?.email, log.libraries?.name], filters.search));
   const reservations = ((reservationsResult.data ?? []) as RawReportSpaceReservation[])
     .map(normalizeReservation)
+    .filter((reservation) => accessContext.canAccessAll || accessContext.allowedLibraryIds.has(reservation.library_id))
     .filter((reservation) => matchesChartSearch([reservation.app_users?.name, reservation.app_users?.email, reservation.libraries?.name, reservation.library_spaces?.name], filters.search));
 
   return { data: { attendanceLogs, reservations }, error: null };
