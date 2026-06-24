@@ -4,7 +4,7 @@
 create table if not exists public.library_opening_hours (
   id uuid primary key default gen_random_uuid(),
   library_id uuid not null references public.libraries(id) on delete cascade,
-  day_of_week integer not null check (day_of_week between 1 and 7),
+  day_of_week integer not null check (day_of_week between 0 and 6),
   opens_at time,
   closes_at time,
   is_closed boolean not null default false,
@@ -154,7 +154,7 @@ begin
     raise exception 'El espacio no está disponible para reservas.';
   end if;
 
-  v_day_of_week := extract(isodow from p_start_at)::integer;
+  v_day_of_week := extract(dow from p_start_at)::integer;
   v_duration_minutes := floor(extract(epoch from (p_end_at - p_start_at)) / 60)::integer;
   v_day_start := date_trunc('day', p_start_at);
   v_day_end := v_day_start + interval '1 day';

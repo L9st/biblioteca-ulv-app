@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
 import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
-import { auditLibraryAccessDenied, filterLibrariesForCurrentUser, getLibraryAccessContext } from "@/services/library-access.service";
+import { auditLibraryAccessDenied, getCurrentUserProfileForAccess, getLibraryAccessContext } from "@/services/library-access.service";
 
 export type ReservationSettingsLibrary = {
   id: string;
@@ -79,6 +79,10 @@ type RawSpaceReservationRule = Omit<SpaceReservationRule, "library_spaces"> & {
   library_spaces: SpaceReservationRule["library_spaces"] | NonNullable<SpaceReservationRule["library_spaces"]>[] | null;
 };
 
+type RawAssignedReservationSettingsLibrary = {
+  libraries: ReservationSettingsLibrary | ReservationSettingsLibrary[] | null;
+};
+
 function normalizeRelation<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
@@ -121,11 +125,31 @@ async function getSpaceLibraryId(spaceId: string): Promise<string | null> {
 }
 
 export async function getReservationSettingsLibraries(): Promise<ReservationSettingsResult<ReservationSettingsLibrary[]>> {
-  const { data, error } = await supabase.from("libraries").select("id, name, code, status").eq("status", "active").order("name", { ascending: true });
-  if (error) return { data: [], error: settingsError(error.message) };
+  const profile = await getCurrentUserProfileForAccess();
+  if (!profile) return { data: [], error: "Usuario no autenticado" };
+  if (profile.role === "student") return { data: [], error: "No tienes permisos para configurar reservas" };
 
-  const context = await getLibraryAccessContext();
-  return { data: filterLibrariesForCurrentUser((data ?? []) as ReservationSettingsLibrary[], context), error: null };
+  if (profile.role === "admin" || profile.role === "superadmin") {
+    const { data, error } = await supabase.from("libraries").select("id, name, code, status").eq("status", "active").order("name", { ascending: true });
+    if (error) return { data: [], error: error.message || settingsError(error.message) };
+    return { data: (data ?? []) as ReservationSettingsLibrary[], error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("app_user_libraries")
+    .select("libraries (id, name, code, status)")
+    .eq("user_id", profile.id);
+
+  if (error) return { data: [], error: error.message || settingsError(error.message) };
+
+  return {
+    data: ((data ?? []) as RawAssignedReservationSettingsLibrary[])
+      .map((item) => normalizeRelation(item.libraries))
+      .filter((library): library is ReservationSettingsLibrary => Boolean(library))
+      .filter((library) => library.status === "active")
+      .sort((first, second) => first.name.localeCompare(second.name)),
+    error: null,
+  };
 }
 
 export async function getReservationSettingsSpaces(libraryId: string): Promise<ReservationSettingsResult<ReservationSettingsSpace[]>> {
@@ -156,6 +180,7 @@ export async function upsertLibraryOpeningHour(input: LibraryOpeningHourInput): 
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
   const accessError = await ensureLibraryAccess(input.library_id, "Intento de actualizar horario de biblioteca no asignada");
   if (accessError) return { data: null, error: accessError };
+  if (input.day_of_week < 0 || input.day_of_week > 6) return { data: null, error: "Día de la semana inválido. Debe estar entre 0 y 6." };
 
   const opensAt = normalizeTimeValue(input.opens_at);
   const closesAt = normalizeTimeValue(input.closes_at);

@@ -36,15 +36,15 @@ type RuleForm = {
   notes: string;
 };
 
-const days = [
+const WEEK_DAYS = [
   { value: 1, label: "Lunes" },
   { value: 2, label: "Martes" },
   { value: 3, label: "Miércoles" },
   { value: 4, label: "Jueves" },
   { value: 5, label: "Viernes" },
   { value: 6, label: "Sábado" },
-  { value: 7, label: "Domingo" },
-];
+  { value: 0, label: "Domingo" },
+] as const;
 
 const fieldClass = "mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10";
 
@@ -57,7 +57,7 @@ function todayInputValue() {
 }
 
 function emptyHours(): HourForm[] {
-  return days.map((day) => ({ day_of_week: day.value, is_closed: false, opens_at: "07:00", closes_at: "20:00", notes: "" }));
+  return WEEK_DAYS.map((day) => ({ day_of_week: day.value, is_closed: false, opens_at: "07:00", closes_at: "20:00", notes: "" }));
 }
 
 function ruleDefaults(): RuleForm {
@@ -75,8 +75,9 @@ function ruleDefaults(): RuleForm {
 }
 
 function applyHours(rows: LibraryOpeningHour[]): HourForm[] {
+  const hoursByDay = new Map(rows.map((hour) => [hour.day_of_week, hour]));
   return emptyHours().map((day) => {
-    const row = rows.find((hour) => hour.day_of_week === day.day_of_week);
+    const row = hoursByDay.get(day.day_of_week);
     if (!row) return day;
     return {
       day_of_week: day.day_of_week,
@@ -149,7 +150,8 @@ export function AdminReservationSettingsPanel() {
     }
 
     setLibraries(librariesResult.data);
-    const nextLibraryId = selectedLibraryId || librariesResult.data[0]?.id || "";
+    const selectedLibraryIsAllowed = librariesResult.data.some((library) => library.id === selectedLibraryId);
+    const nextLibraryId = selectedLibraryIsAllowed ? selectedLibraryId : librariesResult.data[0]?.id || "";
     setLibraryId(nextLibraryId);
 
     if (nextLibraryId) {
@@ -157,7 +159,8 @@ export function AdminReservationSettingsPanel() {
       setHours(applyHours(hoursResult.data));
       setSpaces(spacesResult.data);
       setRules(rulesResult.data);
-      const nextSpaceId = spaceId || spacesResult.data[0]?.id || "";
+      const selectedSpaceIsAllowed = spacesResult.data.some((space) => space.id === spaceId);
+      const nextSpaceId = selectedSpaceIsAllowed ? spaceId : spacesResult.data[0]?.id || "";
       setSpaceId(nextSpaceId);
       setRuleForm(formFromRule(rulesResult.data.find((rule) => rule.space_id === nextSpaceId) ?? null));
       if (hoursResult.error || spacesResult.error || rulesResult.error) setFeedback({ type: "error", message: hoursResult.error ?? spacesResult.error ?? rulesResult.error ?? "No se pudo cargar la configuración." });
@@ -305,7 +308,7 @@ export function AdminReservationSettingsPanel() {
 
       <Card className="p-3"><div className="grid grid-cols-3 gap-2">{[{ id: "hours", label: "Horarios" }, { id: "rules", label: "Reglas por espacio" }, { id: "preview", label: "Vista previa" }].map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id as ActiveTab)} className={`min-h-11 rounded-2xl px-3 py-2 text-xs font-black sm:text-sm ${activeTab === tab.id ? "bg-ulv-yellow text-ulv-blue" : "border border-slate-200 bg-white text-ulv-blue"}`}>{tab.label}</button>)}</div></Card>
 
-      {activeTab === "hours" ? <Card><div className="mb-5 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue"><CalendarClock className="h-5 w-5" aria-hidden="true" /></span><div><h3 className="text-xl font-black text-ulv-blue">Horarios de atención</h3><p className="text-sm text-slate-600">Configura apertura, cierre y notas por día.</p></div></div><div className="grid gap-4 lg:grid-cols-2">{hours.map((hour) => <section key={hour.day_of_week} className="rounded-3xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><h4 className="text-lg font-black text-ulv-blue">{days.find((day) => day.value === hour.day_of_week)?.label}</h4><label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={hour.is_closed} onChange={(event) => updateHour(hour.day_of_week, { is_closed: event.target.checked })} /> Cerrado</label></div><div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><label><span className="text-sm font-bold text-ulv-blue">Hora de apertura</span><input type="time" disabled={hour.is_closed} value={hour.opens_at} onChange={(event) => updateHour(hour.day_of_week, { opens_at: event.target.value })} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Hora de cierre</span><input type="time" disabled={hour.is_closed} value={hour.closes_at} onChange={(event) => updateHour(hour.day_of_week, { closes_at: event.target.value })} className={fieldClass} /></label></div><label className="mt-3 block"><span className="text-sm font-bold text-ulv-blue">Notas</span><input value={hour.notes} onChange={(event) => updateHour(hour.day_of_week, { notes: event.target.value })} className={fieldClass} /></label></section>)}</div><button type="button" onClick={() => void saveHours()} disabled={isSaving || !libraryId} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue disabled:opacity-60 sm:w-auto">{isSaving ? "Guardando..." : "Guardar horario"}</button></Card> : null}
+      {activeTab === "hours" ? <Card><div className="mb-5 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue"><CalendarClock className="h-5 w-5" aria-hidden="true" /></span><div><h3 className="text-xl font-black text-ulv-blue">Horarios de atención</h3><p className="text-sm text-slate-600">Configura apertura, cierre y notas por día.</p></div></div><div className="grid gap-4 lg:grid-cols-2">{hours.map((hour) => <section key={hour.day_of_week} className="rounded-3xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between gap-3"><h4 className="text-lg font-black text-ulv-blue">{WEEK_DAYS.find((day) => day.value === hour.day_of_week)?.label}</h4><label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={hour.is_closed} onChange={(event) => updateHour(hour.day_of_week, { is_closed: event.target.checked })} /> Cerrado</label></div><div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"><label><span className="text-sm font-bold text-ulv-blue">Hora de apertura</span><input type="time" disabled={hour.is_closed} value={hour.opens_at} onChange={(event) => updateHour(hour.day_of_week, { opens_at: event.target.value })} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Hora de cierre</span><input type="time" disabled={hour.is_closed} value={hour.closes_at} onChange={(event) => updateHour(hour.day_of_week, { closes_at: event.target.value })} className={fieldClass} /></label></div><label className="mt-3 block"><span className="text-sm font-bold text-ulv-blue">Notas</span><input value={hour.notes} onChange={(event) => updateHour(hour.day_of_week, { notes: event.target.value })} className={fieldClass} /></label></section>)}</div><button type="button" onClick={() => void saveHours()} disabled={isSaving || !libraryId} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue disabled:opacity-60 sm:w-auto">{isSaving ? "Guardando..." : "Guardar horario"}</button></Card> : null}
 
       {activeTab === "rules" ? <Card><form onSubmit={saveRules} className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><label><span className="text-sm font-bold text-ulv-blue">Espacio</span><select value={spaceId} onChange={(event) => handleSpaceChange(event.target.value)} className={fieldClass}><option value="">Selecciona un espacio</option>{spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label><div className="rounded-2xl bg-ulv-blue p-4 text-white"><p className="text-sm font-bold text-ulv-yellow">Ejemplo</p><p className="mt-1 text-sm">30 a 120 min · intervalo 30 min · máximo 30 días antes · 2 reservas por día.</p></div></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><label><span className="text-sm font-bold text-ulv-blue">Duración mínima</span><input type="number" min="1" value={ruleForm.min_duration_minutes} onChange={(event) => setRuleForm((current) => ({ ...current, min_duration_minutes: event.target.value }))} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Duración máxima</span><input type="number" min="1" value={ruleForm.max_duration_minutes} onChange={(event) => setRuleForm((current) => ({ ...current, max_duration_minutes: event.target.value }))} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Intervalo de bloques</span><input type="number" min="1" value={ruleForm.slot_interval_minutes} onChange={(event) => setRuleForm((current) => ({ ...current, slot_interval_minutes: event.target.value }))} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Anticipación mínima</span><input type="number" min="0" value={ruleForm.min_notice_minutes} onChange={(event) => setRuleForm((current) => ({ ...current, min_notice_minutes: event.target.value }))} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Días máximos de anticipación</span><input type="number" min="0" value={ruleForm.max_days_ahead} onChange={(event) => setRuleForm((current) => ({ ...current, max_days_ahead: event.target.value }))} className={fieldClass} /></label><label><span className="text-sm font-bold text-ulv-blue">Reservas máximas por usuario al día</span><input type="number" min="1" value={ruleForm.max_reservations_per_user_day} onChange={(event) => setRuleForm((current) => ({ ...current, max_reservations_per_user_day: event.target.value }))} className={fieldClass} /></label><label className="flex min-h-20 items-center gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-bold text-ulv-blue"><input type="checkbox" checked={ruleForm.requires_approval} onChange={(event) => setRuleForm((current) => ({ ...current, requires_approval: event.target.checked }))} /> Requiere aprobación</label><label className="flex min-h-20 items-center gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-bold text-ulv-blue"><input type="checkbox" checked={ruleForm.is_active} onChange={(event) => setRuleForm((current) => ({ ...current, is_active: event.target.checked }))} /> Activo</label></div><label className="block"><span className="text-sm font-bold text-ulv-blue">Notas</span><textarea value={ruleForm.notes} onChange={(event) => setRuleForm((current) => ({ ...current, notes: event.target.value }))} className={`${fieldClass} py-3`} rows={3} /></label><button disabled={isSaving || !spaceId} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue disabled:opacity-60 sm:w-auto">{isSaving ? "Guardando..." : "Guardar reglas"}</button></form></Card> : null}
 

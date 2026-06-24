@@ -208,8 +208,7 @@ function getReservationErrorMessage(message: string) {
 }
 
 function getIsoDayOfWeek(value: string) {
-  const day = new Date(`${value}T00:00:00`).getDay();
-  return day === 0 ? 7 : day;
+  return new Date(`${value}T00:00:00`).getDay();
 }
 
 function parseTimeParts(value: string | null | undefined, fallbackHour: number) {
