@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bell, Building2, CalendarCheck, CircleHelp, ClipboardList, FileClock, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarCheck, CalendarClock, CircleHelp, ClipboardList, FileClock, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -55,6 +55,14 @@ const adminCards: AdminCard[] = [
     buttonLabel: "Administrar reservas",
     status: "Disponible",
     icon: CalendarCheck,
+  },
+  {
+    title: "Configuración de reservas",
+    description: "Define horarios de atención y reglas de reserva por espacio.",
+    href: "/admin/configuracion-reservas",
+    buttonLabel: "Configurar reservas",
+    status: "Disponible",
+    icon: CalendarClock,
   },
   {
     title: "Avisos y comunicados",

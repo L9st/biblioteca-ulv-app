@@ -67,6 +67,30 @@ export type ReservationTimeBlock = {
   displayText: string;
 };
 
+export type PublicLibraryOpeningHour = {
+  id: string;
+  library_id: string;
+  day_of_week: number;
+  opens_at: string | null;
+  closes_at: string | null;
+  is_closed: boolean;
+  notes: string | null;
+};
+
+export type PublicSpaceReservationRule = {
+  id: string;
+  space_id: string;
+  min_duration_minutes: number;
+  max_duration_minutes: number;
+  slot_interval_minutes: number;
+  min_notice_minutes: number;
+  max_days_ahead: number;
+  requires_approval: boolean;
+  max_reservations_per_user_day: number;
+  is_active: boolean;
+  notes: string | null;
+};
+
 export type ReservationsForDateInput = {
   date: string;
   libraryId?: string;
@@ -82,6 +106,16 @@ export type BuildDayScheduleInput = {
   isAdmin?: boolean;
   startHour?: number;
   endHour?: number;
+  opensAt?: string | null;
+  closesAt?: string | null;
+  slotIntervalMinutes?: number;
+};
+
+export type ReservationValidationSettings = {
+  openingHour: PublicLibraryOpeningHour | null;
+  rule: PublicSpaceReservationRule;
+  reservationsForDate: ReservationCalendarItem[];
+  userReservationsForDate: SpaceReservation[];
 };
 
 export type ReservationResult<T> = { data: T; error: string | null };
@@ -96,6 +130,20 @@ type RawReservationCalendarItem = Omit<ReservationCalendarItem, "library_spaces"
   status: string;
   library_spaces: ReservationCalendarItem["library_spaces"] | ReservationCalendarItem["library_spaces"][];
   libraries: ReservationCalendarItem["libraries"] | ReservationCalendarItem["libraries"][];
+};
+
+export const defaultSpaceReservationRule: PublicSpaceReservationRule = {
+  id: "default",
+  space_id: "default",
+  min_duration_minutes: 30,
+  max_duration_minutes: 120,
+  slot_interval_minutes: 30,
+  min_notice_minutes: 30,
+  max_days_ahead: 30,
+  requires_approval: true,
+  max_reservations_per_user_day: 2,
+  is_active: true,
+  notes: null,
 };
 
 function normalizeRelation<T>(value: T | T[] | null): T | null {
@@ -140,9 +188,80 @@ function overlaps(startA: Date, endA: Date, startB: Date, endB: Date) {
 
 function getReservationErrorMessage(message: string) {
   const lower = message.toLowerCase();
+  const knownMessages = [
+    "La biblioteca está cerrada en la fecha seleccionada.",
+    "La reserva está fuera del horario de atención.",
+    "Ya alcanzaste el máximo de reservas permitidas para ese día.",
+    "El espacio ya está reservado en ese horario.",
+    "Debes iniciar sesión para reservar espacios.",
+    "El espacio no está disponible para reservas.",
+  ];
+  const directMessage = knownMessages.find((knownMessage) => message.includes(knownMessage));
+  if (directMessage) return directMessage;
+  if (message.includes("La duración mínima es de")) return message;
+  if (message.includes("La duración máxima es de")) return message;
+  if (message.includes("Debes reservar con al menos")) return message;
+  if (message.includes("No puedes reservar con más de")) return message;
   if (lower.includes("overlap") || lower.includes("solap") || lower.includes("conflict")) return "Ya existe una reserva pendiente o aprobada en ese horario.";
   if (lower.includes("permission") || lower.includes("permiso") || lower.includes("denied") || lower.includes("rls")) return "No tienes permisos para realizar esta operación.";
   return "No se pudo procesar la reserva.";
+}
+
+function getIsoDayOfWeek(value: string) {
+  const day = new Date(`${value}T00:00:00`).getDay();
+  return day === 0 ? 7 : day;
+}
+
+function parseTimeParts(value: string | null | undefined, fallbackHour: number) {
+  if (!value) return { hour: fallbackHour, minute: 0 };
+  const [hourValue, minuteValue] = value.split(":");
+  return { hour: Number(hourValue) || 0, minute: Number(minuteValue) || 0 };
+}
+
+function combineDateAndTime(date: string, time: string | null | undefined, fallbackHour: number) {
+  const parts = parseTimeParts(time, fallbackHour);
+  return new Date(`${date}T${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}:00`);
+}
+
+function getMinutesBetween(start: Date, end: Date) {
+  return Math.floor((end.getTime() - start.getTime()) / 60000);
+}
+
+export function validateReservationRequest(input: {
+  startAt: Date;
+  endAt: Date;
+  settings: ReservationValidationSettings;
+  currentUserId: string | null;
+}) {
+  const { startAt, endAt, settings, currentUserId } = input;
+  const duration = getMinutesBetween(startAt, endAt);
+  const rule = settings.rule;
+  const date = startAt.toISOString().slice(0, 10);
+
+  if (settings.openingHour?.is_closed) return "La biblioteca está cerrada en la fecha seleccionada.";
+  const openingStart = combineDateAndTime(date, settings.openingHour?.opens_at, 7);
+  const openingEnd = combineDateAndTime(date, settings.openingHour?.closes_at, 20);
+  if (startAt < openingStart || endAt > openingEnd) return "La reserva está fuera del horario de atención.";
+
+  if (duration < rule.min_duration_minutes) return `La duración mínima es de ${rule.min_duration_minutes} minutos.`;
+  if (duration > rule.max_duration_minutes) return `La duración máxima es de ${rule.max_duration_minutes} minutos.`;
+  if (startAt.getTime() < Date.now() + rule.min_notice_minutes * 60000) return `Debes reservar con al menos ${rule.min_notice_minutes} minutos de anticipación.`;
+  if (startAt.getTime() > Date.now() + rule.max_days_ahead * 24 * 60 * 60000) return `No puedes reservar con más de ${rule.max_days_ahead} días de anticipación.`;
+
+  const userReservations = settings.userReservationsForDate.filter((reservation) => {
+    if (reservation.status !== "pending" && reservation.status !== "approved") return false;
+    if (reservation.user_id !== currentUserId) return false;
+    return reservation.start_at.slice(0, 10) === date;
+  });
+  if (userReservations.length >= rule.max_reservations_per_user_day) return "Ya alcanzaste el máximo de reservas permitidas para ese día.";
+
+  const hasOverlap = settings.reservationsForDate.some((reservation) => {
+    if (reservation.status !== "pending" && reservation.status !== "approved") return false;
+    return overlaps(startAt, endAt, new Date(reservation.start_at), new Date(reservation.end_at));
+  });
+  if (hasOverlap) return "El espacio ya está reservado en ese horario.";
+
+  return null;
 }
 
 function getLoadReservationsErrorMessage(message: string) {
@@ -213,15 +332,53 @@ export async function getReservationsForDate(input: ReservationsForDateInput): P
   return { data: ((data ?? []) as RawReservationCalendarItem[]).map(normalizeCalendarReservation), error: null };
 }
 
+export async function getReservationValidationSettings(input: { spaceId: string; libraryId: string; date: string }): Promise<ReservationResult<ReservationValidationSettings | null>> {
+  const dayOfWeek = getIsoDayOfWeek(input.date);
+  const [openingResult, ruleResult, reservationsResult, myReservationsResult] = await Promise.all([
+    supabase
+      .from("library_opening_hours")
+      .select("id, library_id, day_of_week, opens_at, closes_at, is_closed, notes")
+      .eq("library_id", input.libraryId)
+      .eq("day_of_week", dayOfWeek)
+      .maybeSingle(),
+    supabase
+      .from("space_reservation_rules")
+      .select("id, space_id, min_duration_minutes, max_duration_minutes, slot_interval_minutes, min_notice_minutes, max_days_ahead, requires_approval, max_reservations_per_user_day, is_active, notes")
+      .eq("space_id", input.spaceId)
+      .eq("is_active", true)
+      .maybeSingle(),
+    getReservationsForDate({ date: input.date, libraryId: input.libraryId, spaceId: input.spaceId, status: "all" }),
+    getMySpaceReservations(),
+  ]);
+
+  if (openingResult.error) return { data: null, error: getLoadReservationsErrorMessage(openingResult.error.message) };
+  if (ruleResult.error) return { data: null, error: getLoadReservationsErrorMessage(ruleResult.error.message) };
+  if (reservationsResult.error) return { data: null, error: reservationsResult.error };
+  if (myReservationsResult.error) return { data: null, error: myReservationsResult.error };
+
+  return {
+    data: {
+      openingHour: (openingResult.data as PublicLibraryOpeningHour | null) ?? null,
+      rule: ruleResult.data ? (ruleResult.data as PublicSpaceReservationRule) : { ...defaultSpaceReservationRule, space_id: input.spaceId },
+      reservationsForDate: reservationsResult.data,
+      userReservationsForDate: myReservationsResult.data.filter((reservation) => reservation.start_at.slice(0, 10) === input.date),
+    },
+    error: null,
+  };
+}
+
 export function buildDaySchedule(input: BuildDayScheduleInput): ReservationTimeBlock[] {
   const startHour = input.startHour ?? 7;
   const endHour = input.endHour ?? 20;
+  const intervalMinutes = input.slotIntervalMinutes ?? 60;
   const blocks: ReservationTimeBlock[] = [];
   const reservations = input.reservations.filter((reservation) => reservation.space_id === input.spaceId);
+  const dayStart = combineDateAndTime(input.date, input.opensAt, startHour);
+  const dayEnd = combineDateAndTime(input.date, input.closesAt, endHour);
 
-  for (let hour = startHour; hour < endHour; hour += 1) {
-    const blockStart = new Date(`${input.date}T${String(hour).padStart(2, "0")}:00:00`);
-    const blockEnd = new Date(`${input.date}T${String(hour + 1).padStart(2, "0")}:00:00`);
+  for (let blockStart = new Date(dayStart); blockStart < dayEnd; blockStart = new Date(blockStart.getTime() + intervalMinutes * 60000)) {
+    const blockEnd = new Date(blockStart.getTime() + intervalMinutes * 60000);
+    if (blockEnd > dayEnd) break;
     const occupiedReservation = reservations.find((reservation) => {
       if (reservation.status !== "pending" && reservation.status !== "approved") return false;
       return overlaps(blockStart, blockEnd, new Date(reservation.start_at), new Date(reservation.end_at));

@@ -43,10 +43,12 @@ const actionLabels: Record<string, string> = {
   library_assigned: "Biblioteca asignada",
   library_unassigned: "Biblioteca removida",
   access_denied: "Acceso denegado",
+  schedule_updated: "Horario actualizado",
+  rules_updated: "Reglas actualizadas",
 };
 
 const moduleOptions = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports", "attendance", "system"];
-const actionOptions = ["created", "updated", "deleted", "published", "archived", "approved", "rejected", "cancelled", "completed", "role_changed", "status_changed", "qr_generated", "exported", "login", "email_sent", "email_failed", "library_assigned", "library_unassigned", "access_denied"];
+const actionOptions = ["created", "updated", "deleted", "published", "archived", "approved", "rejected", "cancelled", "completed", "role_changed", "status_changed", "qr_generated", "exported", "login", "email_sent", "email_failed", "library_assigned", "library_unassigned", "access_denied", "schedule_updated", "rules_updated"];
 const summaryModules = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports"];
 
 function canAccess(role: AppUserRole) {

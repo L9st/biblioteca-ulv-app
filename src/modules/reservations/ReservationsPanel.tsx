@@ -14,8 +14,11 @@ import {
   getMySpaceReservations,
   getReservableSpaces,
   getReservationsForDate,
+  getReservationValidationSettings,
   getReservationStatusLabel,
+  validateReservationRequest,
   type ReservationCalendarItem,
+  type ReservationValidationSettings,
   type ReservableSpace,
   type SpaceReservation,
 } from "@/services/reservations.service";
@@ -76,6 +79,7 @@ export function ReservationsPanel() {
   const [calendarDate, setCalendarDate] = useState(todayInputValue());
   const [calendarStatus, setCalendarStatus] = useState<CalendarStatusFilter>("all");
   const [calendarReservations, setCalendarReservations] = useState<ReservationCalendarItem[]>([]);
+  const [reservationSettings, setReservationSettings] = useState<ReservationValidationSettings | null>(null);
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [currentTimestamp] = useState(() => Date.now());
@@ -137,7 +141,7 @@ export function ReservationsPanel() {
   const calendarSpaces = spaces.filter((space) => (calendarLibraryId === "all" || space.library_id === calendarLibraryId) && (calendarSpaceId === "all" || space.id === calendarSpaceId));
   const reserveDate = startAt ? startAt.slice(0, 10) : todayInputValue();
   const selectedSpace = spaces.find((space) => space.id === spaceId) ?? null;
-  const reserveBlocks = selectedSpace ? buildDaySchedule({ date: reserveDate, reservations: calendarReservations, spaceId: selectedSpace.id, currentUserId }) : [];
+  const reserveBlocks = selectedSpace && !reservationSettings?.openingHour?.is_closed ? buildDaySchedule({ date: reserveDate, reservations: calendarReservations, spaceId: selectedSpace.id, currentUserId, opensAt: reservationSettings?.openingHour?.opens_at, closesAt: reservationSettings?.openingHour?.closes_at, slotIntervalMinutes: reservationSettings?.rule.slot_interval_minutes }) : [];
   const occupiedBlocks = reserveBlocks.filter((block) => block.isOccupied).length;
   const upcomingReservations = reservations
     .filter((reservation) => canCancel(reservation.status) && new Date(reservation.start_at).getTime() >= currentTimestamp)
@@ -158,9 +162,11 @@ export function ReservationsPanel() {
     }
 
     setIsCalendarLoading(true);
-    const result = await getReservationsForDate({ date: reserveDate, libraryId: selectedSpace.library_id, spaceId: selectedSpace.id, status: "all" });
-    setCalendarReservations(result.data);
+    const result = await getReservationValidationSettings({ date: reserveDate, libraryId: selectedSpace.library_id, spaceId: selectedSpace.id });
+    setReservationSettings(result.data);
+    setCalendarReservations(result.data?.reservationsForDate ?? []);
     if (result.error) setFeedback({ type: "error", message: result.error });
+    else if (result.data?.openingHour?.is_closed) setFeedback({ type: "error", message: "La biblioteca está cerrada en la fecha seleccionada." });
     setIsCalendarLoading(false);
   }
 
@@ -181,6 +187,24 @@ export function ReservationsPanel() {
 
     if (endDate <= startDate) {
       setFeedback({ type: "error", message: "La hora de fin debe ser posterior a la hora de inicio." });
+      return;
+    }
+
+    const space = spaces.find((item) => item.id === spaceId) ?? null;
+    if (!space) {
+      setFeedback({ type: "error", message: "Selecciona un espacio válido." });
+      return;
+    }
+
+    const settingsResult = await getReservationValidationSettings({ date: startAt.slice(0, 10), libraryId: space.library_id, spaceId: space.id });
+    if (settingsResult.error || !settingsResult.data) {
+      setFeedback({ type: "error", message: settingsResult.error ?? "No se pudo validar la reserva." });
+      return;
+    }
+
+    const validationError = validateReservationRequest({ startAt: startDate, endAt: endDate, settings: settingsResult.data, currentUserId });
+    if (validationError) {
+      setFeedback({ type: "error", message: validationError });
       return;
     }
 
