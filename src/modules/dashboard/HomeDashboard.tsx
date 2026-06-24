@@ -195,6 +195,7 @@ export function HomeDashboard() {
     { title: "Servicios", description: "Préstamos, orientación y recursos.", href: "/servicios", buttonLabel: "Ver servicios", icon: Wrench },
     { title: "Avisos", description: "Horarios, cierres y eventos.", href: "/avisos", buttonLabel: "Ver avisos", icon: Megaphone },
     { title: "Ayuda", description: "Preguntas frecuentes y guías.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
+    { title: "Mis recursos", description: "Consulta tus recursos guardados, favoritos e historial de búsquedas.", href: "/mis-recursos", buttonLabel: "Ver recursos", icon: BookOpen },
     ...(hasSession
       ? [
           { title: "Reservas", description: "Solicita espacios disponibles.", href: "/reservas-espacios", buttonLabel: "Reservar", icon: CalendarCheck },

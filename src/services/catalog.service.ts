@@ -1,4 +1,6 @@
-export type CatalogSearchType = "keyword" | "title" | "author" | "subject" | "isbn";
+import type { CatalogSearchType } from "@/services/catalog-saved-items.service";
+
+export type { CatalogSearchType };
 
 export type CatalogSearchInput = {
   query: string;

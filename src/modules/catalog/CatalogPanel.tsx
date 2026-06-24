@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { BookOpen, ExternalLink, Search } from "lucide-react";
 import { Card } from "@/app/ui/Card";
+import { supabase } from "@/lib/supabase";
+import { createCatalogSavedItem, createCatalogSearchHistory } from "@/services/catalog-saved-items.service";
 import {
   buildKohaAccountUrl,
   buildKohaAdvancedSearchUrl,
@@ -39,9 +41,28 @@ export function CatalogPanel() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<CatalogSearchType>("keyword");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [hasSession, setHasSession] = useState(false);
+  const [lastSearch, setLastSearch] = useState<{ query: string; type: CatalogSearchType; url: string } | null>(null);
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
   const baseUrl = safeExternalUrl(getKohaOpacBaseUrl);
   const advancedUrl = safeExternalUrl(buildKohaAdvancedSearchUrl);
   const accountUrl = safeExternalUrl(buildKohaAccountUrl);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(async () => {
+      const { data } = await supabase.auth.getSession();
+      setHasSession(Boolean(data.session));
+    }, 0);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(Boolean(session));
+    });
+
+    return () => {
+      window.clearTimeout(timeout);
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,16 +70,53 @@ export function CatalogPanel() {
 
     try {
       const url = buildKohaSearchUrl({ query, type });
+      const cleanQuery = query.trim();
+      setLastSearch({ query: cleanQuery, type, url });
       openExternalUrl(url);
+      if (hasSession) void createCatalogSearchHistory({ query: cleanQuery, search_type: type, koha_url: url });
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "No se pudo abrir el catálogo Koha.");
     }
+  }
+
+  async function handleSaveSearch() {
+    setFeedback(null);
+    if (!hasSession) {
+      setFeedback("Debes iniciar sesión para guardar recursos.");
+      return;
+    }
+
+    let searchToSave = lastSearch;
+    if (!searchToSave) {
+      try {
+        const url = buildKohaSearchUrl({ query, type });
+        searchToSave = { query: query.trim(), type, url };
+        setLastSearch(searchToSave);
+      } catch (error) {
+        setFeedback(error instanceof Error ? error.message : "No se pudo preparar la búsqueda.");
+        return;
+      }
+    }
+
+    setIsSavingSearch(true);
+    const result = await createCatalogSavedItem({
+      title: `Búsqueda: ${searchToSave.query}`,
+      author: null,
+      isbn: null,
+      year: null,
+      koha_url: searchToSave.url,
+      status: "saved",
+      notes: "Búsqueda guardada desde el catálogo",
+    });
+    setIsSavingSearch(false);
+    setFeedback(result.error ?? "Búsqueda guardada correctamente.");
   }
 
   const quickLinks = [
     { title: "Búsqueda avanzada", description: "Abre el formulario avanzado del OPAC.", url: advancedUrl, external: true },
     { title: "Mi cuenta Koha", description: "Consulta tu cuenta en el OPAC oficial.", url: accountUrl, external: true },
     { title: "Catálogo completo", description: "Abre la página principal del catálogo.", url: baseUrl, external: true },
+    { title: "Mis recursos guardados", description: "Consulta favoritos e historial de búsquedas.", url: "/mis-recursos", external: false },
     { title: "Ayuda para buscar", description: "Guía rápida para usar el catálogo.", url: "/ayuda", external: false },
   ];
 
@@ -97,10 +155,19 @@ export function CatalogPanel() {
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ej. educación cristiana" className={fieldClass} />
             </label>
             <div className="md:col-span-2">
-              <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] sm:w-auto">
-                Buscar en Koha
-                <ExternalLink className="h-4 w-4" aria-hidden="true" />
-              </button>
+              <div className="grid gap-3 sm:flex sm:flex-wrap">
+                <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] sm:w-auto">
+                  Buscar en Koha
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <button type="button" onClick={() => void handleSaveSearch()} disabled={isSavingSearch} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-ulv-blue px-5 py-3 text-sm font-black text-ulv-blue transition hover:bg-ulv-bg disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                  {isSavingSearch ? "Guardando..." : "Guardar búsqueda"}
+                </button>
+                <Link href="/mis-recursos" className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-blue px-5 py-3 text-sm font-black text-white transition hover:bg-ulv-blue/90 sm:w-auto">
+                  Ver mis recursos
+                </Link>
+              </div>
+              {!hasSession ? <p className="mt-3 text-sm font-semibold text-slate-600">Puedes buscar como visitante. Para guardar historial o favoritos, inicia sesión.</p> : null}
             </div>
           </form>
         </Card>
