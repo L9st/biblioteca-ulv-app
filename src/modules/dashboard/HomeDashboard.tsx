@@ -202,9 +202,7 @@ export function HomeDashboard() {
           { title: "Notificaciones", description: "Actividad de tu cuenta.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
         ]
       : []),
-    kohaOpacUrl
-      ? { title: "Catálogo Koha", description: "Busca materiales bibliográficos.", externalHref: kohaOpacUrl, buttonLabel: "Abrir catálogo", icon: BookOpen }
-      : { title: "Catálogo Koha", description: "Busca materiales bibliográficos.", buttonLabel: "No configurado", icon: BookOpen, disabled: true },
+    { title: "Catálogo Koha", description: "Busca libros y recursos disponibles en el catálogo bibliográfico.", href: "/catalogo", buttonLabel: "Buscar catálogo", icon: BookOpen, badge: kohaOpacUrl ? undefined : "Configurar OPAC" },
     ...(hasSession && canAccessAdmin(user?.role ?? null)
       ? [{ title: "Panel administrativo", description: "Gestión bibliotecaria.", href: "/admin", buttonLabel: "Abrir panel", icon: ShieldCheck }]
       : []),

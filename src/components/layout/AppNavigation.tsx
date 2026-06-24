@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, CalendarCheck, CircleHelp, Home, LogIn, LogOut, MapPinned, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { Bell, BookOpen, CalendarCheck, CircleHelp, Home, LogIn, LogOut, MapPinned, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { getUnreadNotificationsCount } from "@/services/dashboard.service";
@@ -20,6 +20,7 @@ type NavItem = {
 
 const desktopNavItems: NavItem[] = [
   { href: "/", label: "Inicio", shortLabel: "Inicio", icon: Home },
+  { href: "/catalogo", label: "Catálogo", shortLabel: "Catálogo", icon: BookOpen },
   { href: "/espacios", label: "Espacios", shortLabel: "Espacios", icon: MapPinned },
   { href: "/servicios", label: "Servicios", shortLabel: "Servicios", icon: Wrench },
   { href: "/ayuda", label: "Ayuda", shortLabel: "Ayuda", icon: CircleHelp },
