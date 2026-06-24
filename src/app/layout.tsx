@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { AppNavigation } from "@/components/layout/AppNavigation";
 import { NotificationToastHost } from "@/components/notifications/NotificationToastHost";
-import { OfflineStatusBanner } from "@/components/pwa/OfflineStatusBanner";
 import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
 import "./globals.css";
 
@@ -34,7 +33,6 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col bg-ulv-bg text-slate-950">
         <AppNavigation />
         <NotificationToastHost />
-        <OfflineStatusBanner />
         <RegisterServiceWorker />
         {children}
       </body>

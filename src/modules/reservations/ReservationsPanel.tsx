@@ -78,6 +78,7 @@ export function ReservationsPanel() {
   const [calendarReservations, setCalendarReservations] = useState<ReservationCalendarItem[]>([]);
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [currentTimestamp] = useState(() => Date.now());
 
   async function loadData() {
     setIsLoading(true);
@@ -134,10 +135,30 @@ export function ReservationsPanel() {
   );
   const filteredSpaces = libraryId === "all" ? spaces : spaces.filter((space) => space.library_id === libraryId);
   const calendarSpaces = spaces.filter((space) => (calendarLibraryId === "all" || space.library_id === calendarLibraryId) && (calendarSpaceId === "all" || space.id === calendarSpaceId));
+  const reserveDate = startAt ? startAt.slice(0, 10) : todayInputValue();
+  const selectedSpace = spaces.find((space) => space.id === spaceId) ?? null;
+  const reserveBlocks = selectedSpace ? buildDaySchedule({ date: reserveDate, reservations: calendarReservations, spaceId: selectedSpace.id, currentUserId }) : [];
+  const occupiedBlocks = reserveBlocks.filter((block) => block.isOccupied).length;
+  const upcomingReservations = reservations
+    .filter((reservation) => canCancel(reservation.status) && new Date(reservation.start_at).getTime() >= currentTimestamp)
+    .slice(0, 3);
 
   async function loadCalendar() {
     setIsCalendarLoading(true);
     const result = await getReservationsForDate({ date: calendarDate, libraryId: calendarLibraryId, spaceId: calendarSpaceId, status: calendarStatus });
+    setCalendarReservations(result.data);
+    if (result.error) setFeedback({ type: "error", message: result.error });
+    setIsCalendarLoading(false);
+  }
+
+  async function loadReserveAvailability() {
+    if (!selectedSpace) {
+      setFeedback({ type: "error", message: "Selecciona un espacio para consultar disponibilidad." });
+      return;
+    }
+
+    setIsCalendarLoading(true);
+    const result = await getReservationsForDate({ date: reserveDate, libraryId: selectedSpace.library_id, spaceId: selectedSpace.id, status: "all" });
     setCalendarReservations(result.data);
     if (result.error) setFeedback({ type: "error", message: result.error });
     setIsCalendarLoading(false);
@@ -234,13 +255,13 @@ export function ReservationsPanel() {
       ) : null}
 
       <Card className="w-full max-w-full overflow-hidden p-3">
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
           <button
             type="button"
             onClick={() => setActiveTab("reserve")}
             className={`${selectionButtonBaseClass} ${activeTab === "reserve" ? activeButtonClass : inactiveButtonClass}`}
           >
-            Reservar espacio
+            Reservar
           </button>
           <button
             type="button"
@@ -263,117 +284,135 @@ export function ReservationsPanel() {
       </Card>
 
       {activeTab === "reserve" ? (
-        <Card className="w-full max-w-full overflow-hidden p-4 sm:p-6">
-          <div className="mb-5 flex min-w-0 items-start gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
-              <CalendarCheck className="h-6 w-6" aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="text-xl font-black text-ulv-blue">Reservas de espacios</h2>
-              <p className="mt-1 break-words text-sm leading-snug text-slate-600">Solicita la reserva de un espacio disponible en biblioteca.</p>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+          <Card className="w-full max-w-full overflow-hidden p-4 sm:p-6">
+            <div className="mb-5 flex min-w-0 items-start gap-3">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
+                <CalendarCheck className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-xl font-black text-ulv-blue">Enviar solicitud</h2>
+                <p className="mt-1 break-words text-sm leading-snug text-slate-600">Completa los datos para solicitar un espacio.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="grid w-full max-w-full grid-cols-1 gap-4">
+              <div className="w-full max-w-full overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5 sm:p-4">
+                <DropdownSelect
+                  label="Biblioteca"
+                  options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]}
+                  value={libraryId}
+                  onChange={(value) => {
+                    setLibraryId(value);
+                    setSpaceId("");
+                  }}
+                  emptyLabel="Todas las bibliotecas"
+                />
+              </div>
+
+              <label>
+                <span className="text-sm font-bold text-ulv-blue">Espacio</span>
+                <select required value={spaceId} onChange={(event) => setSpaceId(event.target.value)} className={fieldClass}>
+                  <option value="">Selecciona un espacio</option>
+                  {filteredSpaces.map((space) => (
+                    <option key={space.id} value={space.id}>{space.name} - {space.libraries?.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label>
+                  <span className="text-sm font-bold text-ulv-blue">Hora inicio</span>
+                  <input required type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} className={fieldClass} />
+                </label>
+                <label>
+                  <span className="text-sm font-bold text-ulv-blue">Hora fin</span>
+                  <input required type="datetime-local" value={endAt} onChange={(event) => setEndAt(event.target.value)} className={fieldClass} />
+                </label>
+              </div>
+
+              <label>
+                <span className="text-sm font-bold text-ulv-blue">Asistentes</span>
+                <input type="number" min="1" value={attendeesCount} onChange={(event) => setAttendeesCount(event.target.value)} className={fieldClass} />
+              </label>
+
+              <label>
+                <span className="text-sm font-bold text-ulv-blue">Motivo</span>
+                <input value={purpose} onChange={(event) => setPurpose(event.target.value)} className={fieldClass} />
+              </label>
+
+              <label>
+                <span className="text-sm font-bold text-ulv-blue">Notas</span>
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} className={`${fieldClass} py-3`} />
+              </label>
+
+              <button disabled={isSubmitting} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60">
+                {isSubmitting ? "Enviando..." : "Enviar solicitud"}
+              </button>
+            </form>
+          </Card>
+
+          <div className="grid min-w-0 grid-cols-1 gap-5">
+            <Card className="min-w-0 overflow-hidden p-4 sm:p-6">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-black text-ulv-blue">Disponibilidad del día</h2>
+                  <p className="mt-1 break-words text-sm text-slate-600">{selectedSpace ? `${selectedSpace.name} · ${formatDate(`${reserveDate}T00:00:00`)}` : "Selecciona un espacio para consultar horarios."}</p>
+                </div>
+                <button type="button" onClick={() => void loadReserveAvailability()} disabled={isCalendarLoading} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-4 py-2 text-sm font-black text-ulv-blue disabled:opacity-60 md:w-auto">
+                  {isCalendarLoading ? "Cargando..." : "Actualizar"}
+                </button>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {reserveBlocks.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-500 md:col-span-2 xl:col-span-3">Actualiza la disponibilidad para ver la agenda del espacio seleccionado.</p> : null}
+                {reserveBlocks.map((block) => (
+                  <div key={block.start} className={`rounded-2xl border p-3 ${getBlockClassName(block.isOccupied, block.status)}`}>
+                    <p className="text-sm font-black">{block.label}</p>
+                    <p className="mt-1 text-sm font-semibold">{block.displayText}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card className="min-w-0 p-4 sm:p-6">
+                <h3 className="text-lg font-black text-ulv-blue">Resumen</h3>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Horarios libres</p><p className="mt-1 text-3xl font-black text-ulv-blue">{Math.max(0, reserveBlocks.length - occupiedBlocks)}</p></div>
+                  <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-bold text-slate-500">Ocupados</p><p className="mt-1 text-3xl font-black text-ulv-blue">{occupiedBlocks}</p></div>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-slate-600">Las reservas pendientes y aprobadas bloquean disponibilidad. Las canceladas, rechazadas o completadas no bloquean horarios.</p>
+              </Card>
+
+              <Card className="min-w-0 p-4 sm:p-6">
+                <h3 className="text-lg font-black text-ulv-blue">Mis próximas reservas</h3>
+                <div className="mt-4 space-y-3">
+                  {upcomingReservations.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-500">No tienes próximas reservas activas.</p> : null}
+                  {upcomingReservations.map((reservation) => (
+                    <article key={reservation.id} className="rounded-2xl border border-slate-200 p-3">
+                      <p className="break-words text-sm font-black text-ulv-blue">{reservation.library_spaces?.name ?? "Espacio"}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-600">{formatDate(reservation.start_at)} · {formatTime(reservation.start_at)} - {formatTime(reservation.end_at)}</p>
+                    </article>
+                  ))}
+                </div>
+              </Card>
             </div>
           </div>
-
-          <form onSubmit={handleSubmit} className="grid w-full max-w-full grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="w-full max-w-full overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5 sm:p-4">
-              <DropdownSelect
-                label="Filtrar por biblioteca"
-                options={[
-                  { label: "Todas las bibliotecas", value: "all" },
-                  ...libraries.map((library) => ({ label: library.name, value: library.id })),
-                ]}
-                value={libraryId}
-                onChange={(value) => {
-                  setLibraryId(value);
-                  setSpaceId("");
-                }}
-                emptyLabel="Todas las bibliotecas"
-              />
-            </div>
-
-            <label>
-              <span className="text-sm font-bold text-ulv-blue">Espacio</span>
-              <select
-                required
-                value={spaceId}
-                onChange={(event) => setSpaceId(event.target.value)}
-                className={fieldClass}
-              >
-                <option value="">Selecciona un espacio</option>
-                {filteredSpaces.map((space) => (
-                  <option key={space.id} value={space.id}>
-                    {space.name} - {space.libraries?.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <span className="text-sm font-bold text-ulv-blue">Fecha y hora de inicio</span>
-              <input
-                required
-                type="datetime-local"
-                value={startAt}
-                onChange={(event) => setStartAt(event.target.value)}
-                className={fieldClass}
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-bold text-ulv-blue">Fecha y hora de fin</span>
-              <input
-                required
-                type="datetime-local"
-                value={endAt}
-                onChange={(event) => setEndAt(event.target.value)}
-                className={fieldClass}
-              />
-            </label>
-
-            <label className="md:col-span-2">
-              <span className="text-sm font-bold text-ulv-blue">Motivo</span>
-              <input
-                value={purpose}
-                onChange={(event) => setPurpose(event.target.value)}
-                className={fieldClass}
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-bold text-ulv-blue">Cantidad de asistentes</span>
-              <input
-                type="number"
-                min="1"
-                value={attendeesCount}
-                onChange={(event) => setAttendeesCount(event.target.value)}
-                className={fieldClass}
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-bold text-ulv-blue">Notas</span>
-              <input
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                className={fieldClass}
-              />
-            </label>
-
-            <div className="md:col-span-2">
-              <button
-                disabled={isSubmitting}
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60"
-              >
-                {isSubmitting ? "Enviando..." : "Solicitar reserva"}
-              </button>
-            </div>
-          </form>
-        </Card>
+        </div>
       ) : null}
 
       {activeTab === "mine" ? (
         <Card className="w-full max-w-full overflow-hidden p-4 sm:p-6">
-          <h2 className="mb-4 text-xl font-black text-ulv-blue">Mis reservas</h2>
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-xl font-black text-ulv-blue">Mis reservas</h2>
+              <p className="mt-1 text-sm text-slate-600">Consulta tus solicitudes y cancela reservas pendientes o aprobadas.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:min-w-72">
+              <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Total</p><p className="text-2xl font-black text-ulv-blue">{reservations.length}</p></div>
+              <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Activas</p><p className="text-2xl font-black text-ulv-blue">{reservations.filter((reservation) => canCancel(reservation.status)).length}</p></div>
+            </div>
+          </div>
           <div className="space-y-3 md:hidden">
             {reservations.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm font-semibold text-slate-500">
@@ -406,6 +445,10 @@ export function ReservationsPanel() {
                         <dd className="font-black text-slate-900">{formatTime(reservation.end_at)}</dd>
                       </div>
                     </div>
+                    <div>
+                      <dt className="font-bold text-slate-500">Motivo</dt>
+                      <dd className="break-words font-black text-slate-900">{reservation.purpose ?? "Sin motivo"}</dd>
+                    </div>
                   </dl>
                   {canCancel(reservation.status) ? (
                     <button
@@ -420,16 +463,16 @@ export function ReservationsPanel() {
               ))
             )}
           </div>
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
-            <table className="w-full min-w-[780px] text-left text-sm">
+          <div className="hidden rounded-2xl border border-slate-200 md:block">
+            <table className="w-full table-fixed text-left text-sm">
               <thead className="bg-ulv-blue text-white">
                 <tr>
                   <th className="px-4 py-3">Espacio</th>
                   <th className="px-4 py-3">Biblioteca</th>
                   <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Hora inicio</th>
-                  <th className="px-4 py-3">Hora fin</th>
+                  <th className="px-4 py-3">Hora</th>
                   <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3">Motivo</th>
                   <th className="px-4 py-3">Acciones</th>
                 </tr>
               </thead>
@@ -443,14 +486,14 @@ export function ReservationsPanel() {
                 ) : (
                   reservations.map((reservation) => (
                     <tr key={reservation.id}>
-                      <td className="px-4 py-3 font-black text-ulv-blue">
+                      <td className="break-words px-4 py-3 font-black text-ulv-blue">
                         {reservation.library_spaces?.name ?? "Espacio"}
                       </td>
-                      <td className="px-4 py-3">{reservation.libraries?.name ?? "Biblioteca"}</td>
+                      <td className="break-words px-4 py-3">{reservation.libraries?.name ?? "Biblioteca"}</td>
                       <td className="px-4 py-3">{formatDate(reservation.start_at)}</td>
-                      <td className="px-4 py-3">{formatTime(reservation.start_at)}</td>
-                      <td className="px-4 py-3">{formatTime(reservation.end_at)}</td>
+                      <td className="px-4 py-3">{formatTime(reservation.start_at)} - {formatTime(reservation.end_at)}</td>
                       <td className="px-4 py-3 font-bold">{getReservationStatusLabel(reservation.status)}</td>
+                      <td className="break-words px-4 py-3 text-slate-700">{reservation.purpose ?? "Sin motivo"}</td>
                       <td className="px-4 py-3">
                         {canCancel(reservation.status) ? (
                           <button

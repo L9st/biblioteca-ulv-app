@@ -8,7 +8,10 @@ export default function ReservasEspaciosPage() {
         <p className="text-sm font-bold text-ulv-yellow">Biblioteca ULV</p>
         <h1 className="mt-2 break-words text-3xl font-black leading-tight md:text-5xl">Reservas de espacios</h1>
         <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-white/85">
-          Solicita la reserva de un espacio disponible en biblioteca.
+          Solicita y consulta tus reservas en las bibliotecas disponibles.
+        </p>
+        <p className="mt-2 max-w-3xl break-words text-sm leading-6 text-white/75">
+          Selecciona una biblioteca, un espacio, la fecha y el horario para enviar tu solicitud de reserva.
         </p>
       </div>
       <ReservationsPanel />
