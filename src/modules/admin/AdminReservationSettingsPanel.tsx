@@ -192,16 +192,29 @@ export function AdminReservationSettingsPanel() {
 
   async function saveHours() {
     if (!libraryId) return;
-    const invalidDay = hours.find((hour) => !hour.is_closed && (!hour.opens_at || !hour.closes_at || hour.closes_at <= hour.opens_at));
+
+    const missingOpenHour = hours.find((hour) => !hour.is_closed && !hour.opens_at.trim());
+    if (missingOpenHour) {
+      setFeedback({ type: "error", message: "Indica la hora de apertura." });
+      return;
+    }
+
+    const missingCloseHour = hours.find((hour) => !hour.is_closed && !hour.closes_at.trim());
+    if (missingCloseHour) {
+      setFeedback({ type: "error", message: "Indica la hora de cierre." });
+      return;
+    }
+
+    const invalidDay = hours.find((hour) => !hour.is_closed && hour.closes_at <= hour.opens_at);
     if (invalidDay) {
-      setFeedback({ type: "error", message: "Si la biblioteca está abierta, la hora de cierre debe ser posterior a la hora de apertura." });
+      setFeedback({ type: "error", message: "La hora de cierre debe ser posterior a la hora de apertura." });
       return;
     }
 
     setIsSaving(true);
     const results = await Promise.all(hours.map((hour) => upsertLibraryOpeningHour({ library_id: libraryId, day_of_week: hour.day_of_week, is_closed: hour.is_closed, opens_at: hour.is_closed ? null : hour.opens_at, closes_at: hour.is_closed ? null : hour.closes_at, notes: cleanText(hour.notes) })));
     const error = results.find((result) => result.error)?.error;
-    setFeedback(error ? { type: "error", message: "No se pudo guardar el horario" } : { type: "success", message: "Horario actualizado correctamente" });
+    setFeedback(error ? { type: "error", message: `No se pudo guardar el horario. Detalle: ${error}` } : { type: "success", message: "Horario actualizado correctamente" });
     setIsSaving(false);
   }
 

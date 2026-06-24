@@ -100,12 +100,19 @@ function isValidOpenInterval(input: LibraryOpeningHourInput) {
   return input.closes_at > input.opens_at;
 }
 
+function normalizeTimeValue(value: string | null | undefined): string | null {
+  if (!value || value.trim() === "") return null;
+  return value;
+}
+
 async function ensureLibraryAccess(libraryId: string, reason: string): Promise<string | null> {
   const context = await getLibraryAccessContext();
+  const role = context.profile?.role;
+  if (role !== "librarian" && role !== "admin" && role !== "superadmin") return "No tienes permiso para configurar horarios de esta biblioteca.";
   if (context.canAccessAll || context.allowedLibraryIds.has(libraryId)) return null;
 
   void auditLibraryAccessDenied({ libraryId, reason }).catch((auditError: unknown) => console.error("No se pudo registrar denegación de acceso:", auditError));
-  return "No tienes permiso para configurar reservas de esta biblioteca.";
+  return "No tienes permiso para configurar horarios de esta biblioteca.";
 }
 
 async function getSpaceLibraryId(spaceId: string): Promise<string | null> {
@@ -149,17 +156,37 @@ export async function upsertLibraryOpeningHour(input: LibraryOpeningHourInput): 
   if (isOffline()) return { data: null, error: OFFLINE_ACTION_MESSAGE };
   const accessError = await ensureLibraryAccess(input.library_id, "Intento de actualizar horario de biblioteca no asignada");
   if (accessError) return { data: null, error: accessError };
-  if (!isValidOpenInterval(input)) return { data: null, error: "Si la biblioteca está abierta, la hora de cierre debe ser posterior a la hora de apertura." };
+
+  const opensAt = normalizeTimeValue(input.opens_at);
+  const closesAt = normalizeTimeValue(input.closes_at);
+  const normalizedInput = { ...input, opens_at: opensAt, closes_at: closesAt };
+
+  if (!input.is_closed && !opensAt) return { data: null, error: "Indica la hora de apertura." };
+  if (!input.is_closed && !closesAt) return { data: null, error: "Indica la hora de cierre." };
+  if (!isValidOpenInterval(normalizedInput)) return { data: null, error: "La hora de cierre debe ser posterior a la hora de apertura." };
 
   const payload = {
-    ...input,
-    opens_at: input.is_closed ? null : input.opens_at,
-    closes_at: input.is_closed ? null : input.closes_at,
+    library_id: input.library_id,
+    day_of_week: input.day_of_week,
+    is_closed: input.is_closed,
+    opens_at: input.is_closed ? null : opensAt,
+    closes_at: input.is_closed ? null : closesAt,
+    notes: input.notes?.trim() || null,
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase.from("library_opening_hours").upsert(payload, { onConflict: "library_id,day_of_week" }).select("id, library_id, day_of_week, opens_at, closes_at, is_closed, notes, created_at, updated_at").single();
 
-  if (error) return { data: null, error: settingsError(error.message) };
+  const { data, error } = await supabase
+    .from("library_opening_hours")
+    .upsert(payload, {
+      onConflict: "library_id,day_of_week",
+    })
+    .select("id, library_id, day_of_week, opens_at, closes_at, is_closed, notes, created_at, updated_at")
+    .single();
+
+  if (error) {
+    console.error("Error upserting library opening hour:", error);
+    return { data: null, error: error.message || "No se pudo guardar el horario" };
+  }
 
   void createAuditLog({
     module: "reservations",
