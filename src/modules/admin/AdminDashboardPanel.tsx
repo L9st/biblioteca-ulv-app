@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bell, Building2, CalendarCheck, CircleHelp, ClipboardList, FileClock, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarCheck, CircleHelp, ClipboardList, FileClock, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -103,6 +103,14 @@ const adminCards: AdminCard[] = [
     buttonLabel: "Ver auditoría",
     status: "Disponible",
     icon: FileClock,
+  },
+  {
+    title: "Correos",
+    description: "Consulta correos enviados, pendientes o fallidos del sistema.",
+    href: "/admin/correos",
+    buttonLabel: "Ver correos",
+    status: "Disponible",
+    icon: Mail,
   },
 ];
 

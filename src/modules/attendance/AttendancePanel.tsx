@@ -13,6 +13,7 @@ import {
   type AttendanceSummary,
 } from "@/services/attendance.service";
 import { validateAttendanceQrAndToggle } from "@/services/qr.service";
+import { OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import { Card } from "@/app/ui/Card";
 import { StatCard } from "@/app/cards/StatCard";
 
@@ -122,6 +123,12 @@ export function AttendancePanel() {
 
     return () => window.clearInterval(interval);
   }, [openAttendance]);
+
+  useEffect(() => {
+    if (feedback?.message !== OFFLINE_ACTION_MESSAGE) return;
+    const timeout = window.setTimeout(() => setFeedback(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   async function handleShortCodeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

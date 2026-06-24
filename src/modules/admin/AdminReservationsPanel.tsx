@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, Search, ShieldAlert } from "lucide-react";
+import { OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { getReservationStatusLabel, type ReservationStatus } from "@/services/reservations.service";
 import {
@@ -134,6 +135,12 @@ export function AdminReservationsPanel() {
     }, 0);
     return () => window.clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    if (feedback?.message !== OFFLINE_ACTION_MESSAGE) return;
+    const timeout = window.setTimeout(() => setFeedback(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   const libraries = Array.from(
     new Map(spaces.map((space) => [space.libraries?.id ?? space.library_id, space.libraries ?? { id: space.library_id, name: "Biblioteca", code: "" }])).values()

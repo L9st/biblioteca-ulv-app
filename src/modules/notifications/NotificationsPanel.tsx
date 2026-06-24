@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import {
   getMyNotifications,
   getUnreadNotificationsCount,
@@ -63,6 +64,12 @@ export function NotificationsPanel() {
     }, 0);
     return () => window.clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    if (feedback?.message !== OFFLINE_ACTION_MESSAGE) return;
+    const timeout = window.setTimeout(() => setFeedback(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   async function handleMarkRead(notificationId: string) {
     const result = await markNotificationRead(notificationId);

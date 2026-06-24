@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { createAuditLog } from "@/services/admin-audit.service";
 import { isOffline, OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
+import { queueEmailNotification } from "@/services/email-notifications.service";
 import { type ReservableSpace, type ReservationStatus } from "@/services/reservations.service";
 
 export type AdminSpaceReservation = {
@@ -42,6 +43,14 @@ type RawAdminReservation = Omit<AdminSpaceReservation, "requester" | "reviewer" 
   libraries: AdminSpaceReservation["libraries"] | AdminSpaceReservation["libraries"][];
 };
 type RawAdminSpace = Omit<ReservableSpace, "libraries"> & { libraries: ReservableSpace["libraries"] | ReservableSpace["libraries"][] };
+type ReservationEmailContext = {
+  id: string;
+  start_at: string;
+  end_at: string;
+  requester: { id: string; name: string | null; email: string | null } | { id: string; name: string | null; email: string | null }[] | null;
+  library_spaces: { name: string } | { name: string }[] | null;
+  libraries: { name: string } | { name: string }[] | null;
+};
 
 function normalizeRelation<T>(value: T | T[] | null): T | null { return Array.isArray(value) ? value[0] ?? null : value; }
 function normalizeStatus(status: string): ReservationStatus { if (status === "approved" || status === "rejected" || status === "cancelled" || status === "completed") return status; return "pending"; }
@@ -54,6 +63,50 @@ function getDayRange(date: string) {
   const start = new Date(`${date}T00:00:00`);
   const end = new Date(`${date}T23:59:59.999`);
   return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function formatReservationDateTime(value: string) {
+  return new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function getReservationEmailCopy(status: ReservationStatus) {
+  if (status === "approved") return { subject: "Reserva aprobada - Biblioteca ULV", message: "Tu reserva fue aprobada." };
+  if (status === "rejected") return { subject: "Reserva rechazada - Biblioteca ULV", message: "Tu reserva fue rechazada." };
+  if (status === "cancelled") return { subject: "Reserva cancelada - Biblioteca ULV", message: "Tu reserva fue cancelada por personal." };
+  if (status === "completed") return { subject: "Reserva completada - Biblioteca ULV", message: "Tu reserva fue marcada como completada." };
+  return null;
+}
+
+async function queueReservationStatusEmail(reservation: ReservationEmailContext | null, status: ReservationStatus) {
+  const copy = getReservationEmailCopy(status);
+  if (!reservation || !copy) return;
+
+  const requester = normalizeRelation(reservation.requester);
+  if (!requester?.email) return;
+
+  const space = normalizeRelation(reservation.library_spaces);
+  const library = normalizeRelation(reservation.libraries);
+  const body = `Hola ${requester.name ?? ""},
+
+${copy.message}
+
+Espacio: ${space?.name ?? "Espacio"}
+Biblioteca: ${library?.name ?? "Biblioteca"}
+Fecha y hora: ${formatReservationDateTime(reservation.start_at)} - ${formatReservationDateTime(reservation.end_at)}
+
+Puedes revisar los detalles en Biblioteca ULV App.`;
+
+  const result = await queueEmailNotification({
+    user_id: requester.id,
+    to_email: requester.email,
+    subject: copy.subject,
+    body,
+    type: "reservation",
+    related_table: "space_reservations",
+    related_id: reservation.id,
+  });
+
+  if (result.error) console.warn("No se pudo crear correo de reserva en cola:", result.error);
 }
 
 export async function getAdminSpaceReservations(): Promise<AdminReservationsResult<AdminSpaceReservation[]>> {
@@ -93,7 +146,7 @@ export async function updateSpaceReservationStatus(reservationId: string, status
 
   const { data: reservation } = await supabase
     .from("space_reservations")
-    .select("id, space_id, library_spaces (name)")
+    .select("id, start_at, end_at, requester:app_users!space_reservations_user_id_fkey (id, name, email), library_spaces (name), libraries (name)")
     .eq("id", reservationId)
     .maybeSingle();
 
@@ -122,6 +175,8 @@ export async function updateSpaceReservationStatus(reservationId: string, status
     entity_label: space?.name ?? `Reserva ${reservationId}`,
     description: descriptions[action],
   }).catch((auditError: unknown) => console.error("No se pudo registrar auditoría de reserva:", auditError));
+
+  void queueReservationStatusEmail(reservation as ReservationEmailContext | null, status).catch((emailError: unknown) => console.warn("No se pudo preparar correo de reserva:", emailError));
 
   return { data: null, error: null };
 }

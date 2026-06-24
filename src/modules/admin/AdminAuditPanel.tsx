@@ -38,10 +38,12 @@ const actionLabels: Record<string, string> = {
   qr_generated: "QR generado",
   exported: "Exportado",
   login: "Inicio de sesión",
+  email_sent: "Correo enviado",
+  email_failed: "Correo fallido",
 };
 
 const moduleOptions = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports", "attendance", "system"];
-const actionOptions = ["created", "updated", "deleted", "published", "archived", "approved", "rejected", "cancelled", "completed", "role_changed", "status_changed", "qr_generated", "exported", "login"];
+const actionOptions = ["created", "updated", "deleted", "published", "archived", "approved", "rejected", "cancelled", "completed", "role_changed", "status_changed", "qr_generated", "exported", "login", "email_sent", "email_failed"];
 const summaryModules = ["reservations", "users", "qr", "spaces", "announcements", "services", "help", "reports"];
 
 function canAccess(role: AppUserRole) {

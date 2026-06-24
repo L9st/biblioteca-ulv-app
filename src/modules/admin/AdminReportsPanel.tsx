@@ -166,6 +166,12 @@ export function AdminReportsPanel() {
     return () => window.clearTimeout(timeout);
   }, []);
 
+  useEffect(() => {
+    if (feedback?.message !== OFFLINE_ACTION_MESSAGE) return;
+    const timeout = window.setTimeout(() => setFeedback(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
+
   const filteredLogs = logs.filter((log) => {
     const matchesLibrary = libraryId === "all" || log.library_id === libraryId;
     const matchesStatus = status === "all" || log.status === status;
