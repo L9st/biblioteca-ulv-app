@@ -61,6 +61,17 @@ function matchesSearch(notification: EmailNotification, search?: string) {
   return [notification.to_email, notification.subject].some((value) => value.toLowerCase().includes(cleanSearch));
 }
 
+async function triggerEmailQueueProcessing() {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) return;
+
+  await fetch("/api/admin/email/trigger-process", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => null);
+}
+
 export async function queueEmailNotification(input: QueueEmailNotificationInput): Promise<EmailNotificationsResult<EmailNotification | null>> {
   if (!input.to_email.trim()) return { data: null, error: null };
 
@@ -93,6 +104,7 @@ export async function queueEmailNotification(input: QueueEmailNotificationInput)
     .single();
 
   if (error) return { data: null, error: "No se pudo crear el correo en cola." };
+  void triggerEmailQueueProcessing();
   return { data: normalizeEmailNotification(data as Omit<EmailNotification, "status" | "type"> & { status: string; type: string }), error: null };
 }
 

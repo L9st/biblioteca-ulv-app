@@ -48,7 +48,7 @@ function kohaOpacCheck(): DiagnosticCheck {
 
 function emailEnvChecks(): DiagnosticCheck[] {
   const provider = process.env.EMAIL_PROVIDER;
-  const checks = [envCheck("EMAIL_PROVIDER", "EMAIL_PROVIDER", false), envCheck("EMAIL_FROM", "EMAIL_FROM", false), envCheck("EMAIL_PROCESS_SECRET", "EMAIL_PROCESS_SECRET", false)];
+  const checks = [envCheck("EMAIL_PROVIDER", "EMAIL_PROVIDER", false), envCheck("EMAIL_FROM", "EMAIL_FROM", false), envCheck("EMAIL_PROCESS_SECRET", "EMAIL_PROCESS_SECRET", false), envCheck("CRON_SECRET", "CRON_SECRET", false)];
   if (provider === "smtp") {
     checks.push(envCheck("SMTP_HOST", "SMTP_HOST", true), envCheck("SMTP_PORT", "SMTP_PORT", true), envCheck("SMTP_USER", "SMTP_USER", true), envCheck("SMTP_PASSWORD", "SMTP_PASSWORD", true));
   }
@@ -117,10 +117,13 @@ async function buildDataSections(supabase: SupabaseClient): Promise<DiagnosticSe
 
   const emailChecks = await Promise.all([
     countRows(supabase, "email_notifications", "email-queue", "Cola de correos", "Cola de correos accesible.", "No hay correos en cola."),
+    queuedEmailsCheck(supabase),
     countWhere(supabase, "email_notifications", "status", "failed", "email-failed", "Correos fallidos", true),
     oldQueuedEmailsCheck(supabase),
+    lastSentEmailCheck(supabase),
   ]);
   emailChecks.push(process.env.EMAIL_PROVIDER === "smtp" && isConfigured(process.env.SMTP_HOST) ? check("email-smtp", "SMTP", "ok", "SMTP configurado.") : check("email-smtp", "SMTP", "warning", "Proveedor de correo pendiente o incompleto."));
+  emailChecks.push(buildCronConfigCheck());
 
   const catalogChecks = await Promise.all([
     countRows(supabase, "catalog_search_events", "catalog-events", "Eventos de búsqueda", "Existen eventos de búsqueda.", "No hay eventos de búsqueda."),
@@ -161,6 +164,24 @@ async function oldQueuedEmailsCheck(supabase: SupabaseClient): Promise<Diagnosti
   if (error) return check("email-old-queued", "Correos pendientes antiguos", "warning", "No se pudo consultar.", error.message);
   if ((count ?? 0) > 0) return check("email-old-queued", "Correos pendientes antiguos", "warning", "Hay correos queued antiguos.", `${count ?? 0} registros`);
   return check("email-old-queued", "Correos pendientes antiguos", "ok", "Sin correos queued antiguos.");
+}
+
+async function queuedEmailsCheck(supabase: SupabaseClient): Promise<DiagnosticCheck> {
+  const { count, error } = await supabase.from("email_notifications").select("id", { count: "exact", head: true }).eq("status", "queued");
+  if (error) return check("email-queued", "Correos en cola", "warning", "No se pudo consultar.", error.message);
+  return check("email-queued", "Correos en cola", "ok", "Conteo disponible.", `${count ?? 0} correos en cola`);
+}
+
+async function lastSentEmailCheck(supabase: SupabaseClient): Promise<DiagnosticCheck> {
+  const { data, error } = await supabase.from("email_notifications").select("sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) return check("email-last-sent", "Último correo enviado", "warning", "No se pudo consultar.", error.message);
+  if (!data?.sent_at) return check("email-last-sent", "Último correo enviado", "warning", "Aún no hay correos enviados.");
+  return check("email-last-sent", "Último correo enviado", "ok", "Hay correos enviados.", new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.sent_at as string)));
+}
+
+function buildCronConfigCheck(): DiagnosticCheck {
+  const exists = existsSync("vercel.json");
+  return check("email-cron-config", "Cron de correo configurado", exists ? "ok" : "warning", exists ? "vercel.json encontrado." : "No se encontró vercel.json.");
 }
 
 function buildPwaChecks(): DiagnosticCheck[] {
