@@ -13,6 +13,7 @@ type AdminCard = {
   buttonLabel: string;
   status: "Disponible" | "En construcción";
   icon: typeof QrCode;
+  globalStatsOnly?: boolean;
 };
 
 const adminCards: AdminCard[] = [
@@ -113,6 +114,15 @@ const adminCards: AdminCard[] = [
     icon: BarChart3,
   },
   {
+    title: "Estadísticas del catálogo",
+    description: "Consulta términos más buscados, actividad diaria y uso del catálogo.",
+    href: "/admin/catalogo-estadisticas",
+    buttonLabel: "Ver estadísticas",
+    status: "Disponible",
+    icon: BarChart3,
+    globalStatsOnly: true,
+  },
+  {
     title: "Auditoría",
     description: "Consulta el historial de acciones administrativas realizadas en la app.",
     href: "/admin/auditoria",
@@ -132,6 +142,10 @@ const adminCards: AdminCard[] = [
 
 function canAccessAdmin(role: AppUserRole) {
   return role === "librarian" || role === "admin" || role === "superadmin";
+}
+
+function canAccessGlobalStats(role: AppUserRole) {
+  return role === "admin" || role === "superadmin";
 }
 
 export function AdminDashboardPanel() {
@@ -197,7 +211,7 @@ export function AdminDashboardPanel() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {adminCards.map((card) => {
+        {adminCards.filter((card) => !card.globalStatsOnly || canAccessGlobalStats(currentUser.role)).map((card) => {
           const Icon = card.icon;
 
           return (

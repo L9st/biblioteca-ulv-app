@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BookOpen, ExternalLink, Search } from "lucide-react";
 import { Card } from "@/app/ui/Card";
 import { supabase } from "@/lib/supabase";
+import { registerCatalogSearchEvent } from "@/services/catalog-analytics.service";
 import { createCatalogSavedItem, createCatalogSearchHistory } from "@/services/catalog-saved-items.service";
 import {
   buildKohaAccountUrl,
@@ -73,6 +74,7 @@ export function CatalogPanel() {
       const cleanQuery = query.trim();
       setLastSearch({ query: cleanQuery, type, url });
       openExternalUrl(url);
+      void registerCatalogSearchEvent({ query: cleanQuery, searchType: type, kohaUrl: url, source: "catalog" });
       if (hasSession) void createCatalogSearchHistory({ query: cleanQuery, search_type: type, koha_url: url });
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "No se pudo abrir el catálogo Koha.");
