@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, BarChart3, Bell, BookOpen, CalendarCheck, CheckSquare, ChevronDown, CircleHelp, Clock3, ExternalLink, FileClock, Headphones, LogIn, Mail, MapPinned, Megaphone, QrCode, ShieldCheck, UserRound, Users, Wrench } from "lucide-react";
+import { Bell, BookOpen, CalendarCheck, ChevronDown, CircleHelp, Clock3, ExternalLink, Headphones, LogIn, MapPinned, Megaphone, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   getCurrentDashboardUser,
+  getCurrentOpenAttendance,
   getNextReservation,
   getUnreadNotificationsCount,
-  getMyCatalogSummary,
-  type DashboardCatalogSummary,
+  type DashboardOpenAttendance,
   type DashboardReservation,
   type DashboardUser,
 } from "@/services/dashboard.service";
@@ -31,8 +31,7 @@ type QuickCard = {
   disabled?: boolean;
 };
 
-type DashboardSectionId = "services" | "help";
-type DashboardRole = "visitor" | "student" | "librarian" | "admin" | "superadmin";
+type DashboardSectionId = "quick" | "reservations" | "services" | "help";
 
 const emptyAttendanceSummary: AttendanceSummary = {
   todayMinutes: 0,
@@ -40,16 +39,20 @@ const emptyAttendanceSummary: AttendanceSummary = {
   monthMinutes: 0,
 };
 
-const emptyCatalogSummary: DashboardCatalogSummary = { savedItems: 0, recentSearches: [] };
+function canAccessAdmin(role: DashboardUser["role"] | null) {
+  return role === "librarian" || role === "admin" || role === "superadmin";
+}
 
-function getDashboardRole(hasSession: boolean, role: DashboardUser["role"] | null | undefined): DashboardRole {
-  if (!hasSession) return "visitor";
-  if (role === "librarian" || role === "admin" || role === "superadmin") return role;
-  return "student";
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function getReservationStatusLabel(status: string) {
+  return status === "approved" ? "Aprobada" : "Pendiente";
 }
 
 function formatServiceLibraryName(service: PublicLibraryService) {
@@ -131,33 +134,17 @@ function QuickAccessCard({ card }: { card: QuickCard }) {
   return <Link href={card.href ?? "/"}>{content}</Link>;
 }
 
-function ActionSection({ title, eyebrow, cards }: { title: string; eyebrow: string; cards: QuickCard[] }) {
-  if (cards.length === 0) return null;
-
-  return (
-    <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-ulv-blue">{eyebrow}</p>
-        <h2 className="mt-1 text-2xl font-black text-slate-950">{title}</h2>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((card) => <QuickAccessCard key={card.title} card={card} />)}
-      </div>
-    </section>
-  );
-}
-
 export function HomeDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [user, setUser] = useState<DashboardUser | null>(null);
+  const [openAttendance, setOpenAttendance] = useState<DashboardOpenAttendance | null>(null);
   const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary>(emptyAttendanceSummary);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextReservation, setNextReservation] = useState<DashboardReservation | null>(null);
-  const [catalogSummary, setCatalogSummary] = useState<DashboardCatalogSummary>(emptyCatalogSummary);
   const [latestServices, setLatestServices] = useState<PublicLibraryService[]>([]);
   const [latestHelpArticles, setLatestHelpArticles] = useState<PublicHelpArticle[]>([]);
-  const [openSection, setOpenSection] = useState<DashboardSectionId | null>("services");
+  const [openSection, setOpenSection] = useState<DashboardSectionId | null>("quick");
   const [error, setError] = useState<string | null>(null);
   const kohaOpacUrl = process.env.NEXT_PUBLIC_KOHA_OPAC_URL;
 
@@ -172,85 +159,56 @@ export function HomeDashboard() {
 
       if (!isAuthenticated) {
         setAttendanceSummary(emptyAttendanceSummary);
-        setCatalogSummary(emptyCatalogSummary);
         setError(latestServicesResult.error ?? latestHelpResult.error);
         setIsLoading(false);
         return;
       }
 
-      const [userResult, attendanceSummaryResult, notificationResult, reservationResult, catalogSummaryResult] = await Promise.all([
+      const [userResult, attendanceResult, attendanceSummaryResult, notificationResult, reservationResult] = await Promise.all([
         getCurrentDashboardUser(),
+        getCurrentOpenAttendance(),
         getMyAttendanceSummary(),
         getUnreadNotificationsCount(),
         getNextReservation(),
-        getMyCatalogSummary(),
       ]);
 
       setUser(userResult.data);
+      setOpenAttendance(attendanceResult.data);
       setAttendanceSummary(attendanceSummaryResult);
       setUnreadCount(notificationResult.data);
       setNextReservation(reservationResult.data);
-      setCatalogSummary(catalogSummaryResult.data);
-      setError(userResult.error ?? notificationResult.error ?? reservationResult.error ?? catalogSummaryResult.error ?? latestServicesResult.error ?? latestHelpResult.error);
+      setError(userResult.error ?? attendanceResult.error ?? notificationResult.error ?? reservationResult.error ?? latestServicesResult.error ?? latestHelpResult.error);
       setIsLoading(false);
     }, 0);
 
     return () => window.clearTimeout(timeout);
   }, []);
 
-  const role = getDashboardRole(hasSession, user?.role);
-  const catalogCard: QuickCard = { title: "Catálogo Koha", description: "Busca libros, autores, temas o ISBN en el catálogo bibliográfico.", href: "/catalogo", buttonLabel: "Buscar en catálogo", icon: BookOpen, badge: kohaOpacUrl ? undefined : "Configurar OPAC" };
-  const visitorCards: QuickCard[] = [
-    catalogCard,
-    { title: "Espacios disponibles", description: "Conoce salas, cubículos y áreas de biblioteca.", href: "/espacios", buttonLabel: "Ver espacios", icon: MapPinned },
-    { title: "Servicios de biblioteca", description: "Consulta préstamos, orientación y apoyos disponibles.", href: "/servicios", buttonLabel: "Ver servicios", icon: Wrench },
-    { title: "Ayuda", description: "Preguntas frecuentes y guías rápidas para usuarios.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
-    { title: "Iniciar sesión", description: "Accede a reservas, recursos guardados y notificaciones.", href: "/login", buttonLabel: "Iniciar sesión", icon: LogIn },
-  ];
-  const studentPrimaryCards: QuickCard[] = [
-    catalogCard,
-    { title: "Reservar espacio", description: "Solicita salas o espacios disponibles en biblioteca.", href: "/reservas-espacios", buttonLabel: "Reservar", icon: CalendarCheck },
-    { title: "Mis reservas", description: "Consulta tus próximas solicitudes de espacio.", href: "/reservas-espacios", buttonLabel: "Ver reservas", icon: CalendarCheck },
-    { title: "Mis recursos", description: "Consulta favoritos, recursos guardados e historial.", href: "/mis-recursos", buttonLabel: "Ver recursos", icon: BookOpen, badge: catalogSummary.savedItems > 0 ? `${catalogSummary.savedItems} guardados` : undefined },
-    { title: "Notificaciones", description: "Revisa avisos y actividad de tu cuenta.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
-    { title: "Soporte", description: "Reporta problemas o solicita ayuda con la app.", href: "/soporte", buttonLabel: "Solicitar ayuda", icon: Headphones },
-  ];
-  const studentMoreCards: QuickCard[] = [
-    { title: "Ayuda", description: "Guías rápidas y preguntas frecuentes.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
+  const quickCards: QuickCard[] = [
+    ...(hasSession
+      ? [
+          { title: "Mi cuenta", description: "Perfil, horas, reservas y notificaciones.", href: "/mi-cuenta", buttonLabel: "Ver cuenta", icon: UserRound },
+          { title: "Mis horas", description: "Entradas, salidas y horas acumuladas.", href: "/horas", buttonLabel: "Ver horas", icon: Clock3 },
+        ]
+      : []),
+    { title: "Espacios", description: "Salas y áreas disponibles.", href: "/espacios", buttonLabel: "Ver espacios", icon: MapPinned },
     { title: "Servicios", description: "Préstamos, orientación y recursos.", href: "/servicios", buttonLabel: "Ver servicios", icon: Wrench },
-    { title: "Mi cuenta", description: "Perfil, reservas y preferencias.", href: "/mi-cuenta", buttonLabel: "Ver cuenta", icon: UserRound },
-    { title: "Mis horas", description: "Entradas, salidas y horas acumuladas.", href: "/horas", buttonLabel: "Ver horas", icon: Clock3 },
+    { title: "Avisos", description: "Horarios, cierres y eventos.", href: "/avisos", buttonLabel: "Ver avisos", icon: Megaphone },
+    { title: "Ayuda", description: "Preguntas frecuentes y guías.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
+    { title: "Mis recursos", description: "Consulta tus recursos guardados, favoritos e historial de búsquedas.", href: "/mis-recursos", buttonLabel: "Ver recursos", icon: BookOpen },
+    ...(hasSession
+      ? [
+          { title: "Reservas", description: "Solicita espacios disponibles.", href: "/reservas-espacios", buttonLabel: "Reservar", icon: CalendarCheck },
+          { title: "Soporte", description: "Reporta problemas o solicita ayuda sobre el uso de la app.", href: "/soporte", buttonLabel: "Solicitar ayuda", icon: Headphones },
+          { title: "Notificaciones", description: "Actividad de tu cuenta.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
+        ]
+      : []),
+    { title: "Catálogo Koha", description: "Busca libros y recursos disponibles en el catálogo bibliográfico.", href: "/catalogo", buttonLabel: "Buscar catálogo", icon: BookOpen, badge: kohaOpacUrl ? undefined : "Configurar OPAC" },
+    ...(hasSession && canAccessAdmin(user?.role ?? null)
+      ? [{ title: "Panel administrativo", description: "Gestión bibliotecaria.", href: "/admin", buttonLabel: "Abrir panel", icon: ShieldCheck }]
+      : []),
+    ...(!hasSession ? [{ title: "Iniciar sesión", description: "Accede a horas y reservas.", href: "/login", buttonLabel: "Iniciar sesión", icon: LogIn }] : []),
   ];
-  const librarianPrimaryCards: QuickCard[] = [
-    { title: "Panel administrativo", description: "Accede a la operación bibliotecaria diaria.", href: "/admin", buttonLabel: "Abrir panel", icon: ShieldCheck },
-    { title: "Reservas pendientes", description: "Revisa y gestiona solicitudes de espacios.", href: "/admin/reservas", buttonLabel: "Ver reservas", icon: CalendarCheck },
-    { title: "Asistencia", description: "Consulta entradas, salidas y usuarios activos.", href: "/admin/asistencia", buttonLabel: "Ver asistencia", icon: Clock3 },
-    { title: "Generar QR", description: "Crea códigos QR para entrada y salida.", href: "/admin/qr", buttonLabel: "Abrir QR", icon: QrCode },
-    { title: "Soporte", description: "Atiende solicitudes e incidencias de usuarios.", href: "/admin/soporte", buttonLabel: "Gestionar soporte", icon: Headphones },
-    { title: "Avisos", description: "Publica comunicados y horarios relevantes.", href: "/admin/avisos", buttonLabel: "Gestionar avisos", icon: Megaphone },
-  ];
-  const librarianMoreCards: QuickCard[] = [
-    { title: "Reportes", description: "Consulta reportes operativos de biblioteca.", href: "/admin/reportes", buttonLabel: "Ver reportes", icon: BarChart3 },
-    catalogCard,
-    { title: "Mi cuenta", description: "Acceso rápido a tu perfil y notificaciones.", href: "/mi-cuenta", buttonLabel: "Ver cuenta", icon: UserRound },
-    { title: "Notificaciones", description: "Actividad administrativa y personal.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
-  ];
-  const adminPrimaryCards: QuickCard[] = [
-    { title: "Panel administrativo", description: "Gestiona los módulos principales del sistema.", href: "/admin", buttonLabel: "Abrir panel", icon: ShieldCheck },
-    { title: "Diagnóstico del sistema", description: "Revisa variables, conexión y estado técnico.", href: "/admin/diagnostico", buttonLabel: "Ver diagnóstico", icon: Activity },
-    { title: "Estado de producción", description: "Checklist visual para validar la app.", href: "/admin/estado-produccion", buttonLabel: "Ver checklist", icon: CheckSquare },
-    { title: "Usuarios", description: "Gestiona roles, estados y accesos.", href: "/admin/usuarios", buttonLabel: "Administrar usuarios", icon: Users },
-    { title: "Reservas", description: "Revisa y administra reservas de espacios.", href: "/admin/reservas", buttonLabel: "Administrar reservas", icon: CalendarCheck },
-    { title: "Reportes", description: "Consulta estadísticas y reportes administrativos.", href: "/admin/reportes", buttonLabel: "Ver reportes", icon: BarChart3 },
-  ];
-  const adminMoreCards: QuickCard[] = [
-    { title: "Estadísticas del catálogo", description: "Consulta términos más buscados y actividad diaria.", href: "/admin/catalogo-estadisticas", buttonLabel: "Ver estadísticas", icon: BookOpen },
-    { title: "Correos", description: "Revisa cola, enviados y fallidos del sistema.", href: "/admin/correos", buttonLabel: "Ver correos", icon: Mail },
-    { title: "Auditoría", description: "Consulta acciones administrativas registradas.", href: "/admin/auditoria", buttonLabel: "Ver auditoría", icon: FileClock },
-    catalogCard,
-  ];
-  const primaryCards = role === "visitor" ? visitorCards : role === "student" ? studentPrimaryCards : role === "librarian" ? librarianPrimaryCards : adminPrimaryCards;
-  const moreCards = role === "student" ? studentMoreCards : role === "librarian" ? librarianMoreCards : role === "admin" || role === "superadmin" ? adminMoreCards : [];
 
   function handleToggleSection(sectionId: DashboardSectionId) {
     setOpenSection((currentSection) => (currentSection === sectionId ? null : sectionId));
@@ -278,7 +236,7 @@ export function HomeDashboard() {
           {hasSession ? `Hola, ${displayName}` : "Bienvenido a Biblioteca ULV App"}
         </h1>
         <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">
-          {role === "visitor" ? "Consulta el catálogo, espacios, servicios y ayuda de biblioteca." : role === "student" ? "Busca recursos, reserva espacios y consulta tu actividad de biblioteca." : role === "librarian" ? "Gestiona la operación diaria de biblioteca desde un inicio organizado." : "Administra el sistema, revisa diagnósticos y controla la operación principal."}
+          {hasSession ? "Gestiona tus horas, reservas y servicios de biblioteca." : "Consulta espacios, servicios y accede al catálogo de biblioteca."}
         </p>
       </section>
 
@@ -286,60 +244,94 @@ export function HomeDashboard() {
         <InstallAppButton />
       </div>
 
-      <ActionSection title={role === "visitor" ? "Acciones públicas" : role === "student" ? "Acciones principales" : role === "librarian" ? "Operación diaria" : "Gestión del sistema"} eyebrow={role === "visitor" ? "Inicio" : role === "student" ? "Estudiante" : role === "librarian" ? "Biblioteca" : "Administración"} cards={primaryCards} />
-
-      {role === "student" ? (
-        <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-ulv-blue">Resumen personal</p>
-              <h2 className="mt-1 text-2xl font-black text-slate-950">Tu biblioteca</h2>
-            </div>
-            <Link href="/catalogo" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-5 text-sm font-black text-ulv-blue">Buscar en catálogo</Link>
+      <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-ulv-blue">Horas y cuenta</p>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">Mi actividad</h2>
           </div>
+          {hasSession ? <p className="text-sm font-bold text-slate-500">Resumen personal</p> : null}
+        </div>
 
-          <Card className="mt-5 bg-ulv-bg p-4">
-            <p className="text-sm font-bold text-ulv-blue">¿Qué libro, autor o tema buscas?</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Abre el buscador del catálogo Koha, guarda búsquedas y consulta tus recursos favoritos.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <Link href="/catalogo" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-4 text-sm font-black text-ulv-blue">Buscar en Koha</Link>
-              <Link href="/mis-recursos" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-blue px-4 text-sm font-black text-white">Mis recursos</Link>
+        {hasSession ? (
+          <div className="mt-5 space-y-4">
+            <Card className="p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
+                  <Clock3 className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-black text-ulv-blue">{openAttendance ? "Entrada activa" : "Sin entrada activa"}</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {openAttendance ? `${openAttendance.libraries?.name ?? "Biblioteca"} desde las ${formatTime(openAttendance.check_in_at)}.` : "No tienes una entrada abierta en este momento."}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Card className="p-4">
+                <p className="text-xs font-bold text-slate-500">Horas de hoy</p>
+                <p className="mt-1 text-2xl font-black text-ulv-blue">{formatMinutes(attendanceSummary.todayMinutes)}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-slate-500">Esta semana</p>
+                <p className="mt-1 text-2xl font-black text-ulv-blue">{formatMinutes(attendanceSummary.weekMinutes)}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-slate-500">Este mes</p>
+                <p className="mt-1 text-2xl font-black text-ulv-blue">{formatMinutes(attendanceSummary.monthMinutes)}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs font-bold text-slate-500">Notificaciones</p>
+                <p className="mt-1 text-2xl font-black text-ulv-blue">{unreadCount}</p>
+              </Card>
             </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Link href="/horas" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-4 text-sm font-black text-ulv-blue">Ver mis horas</Link>
+              <Link href="/mi-cuenta" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-blue px-4 text-sm font-black text-white">Ver mi cuenta</Link>
+              <Link href="/notificaciones" className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-ulv-blue px-4 text-sm font-black text-ulv-blue">Ver notificaciones</Link>
+            </div>
+          </div>
+        ) : (
+          <Card className="mt-5 p-4">
+            <p className="text-sm font-semibold text-slate-600">Inicia sesión para consultar tu entrada activa, horas acumuladas y notificaciones.</p>
+            <Link href="/login" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-5 text-sm font-black text-ulv-blue">Iniciar sesión</Link>
           </Card>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Card className="p-4"><p className="text-xs font-bold text-slate-500">Próxima reserva</p><p className="mt-2 text-sm font-black text-ulv-blue">{nextReservation ? formatDateTime(nextReservation.start_at) : "Sin reservas próximas"}</p></Card>
-            <Card className="p-4"><p className="text-xs font-bold text-slate-500">Notificaciones</p><p className="mt-1 text-2xl font-black text-ulv-blue">{unreadCount}</p></Card>
-            <Card className="p-4"><p className="text-xs font-bold text-slate-500">Recursos guardados</p><p className="mt-1 text-2xl font-black text-ulv-blue">{catalogSummary.savedItems}</p></Card>
-            <Card className="p-4"><p className="text-xs font-bold text-slate-500">Horas este mes</p><p className="mt-1 text-2xl font-black text-ulv-blue">{formatMinutes(attendanceSummary.monthMinutes)}</p></Card>
-          </div>
-
-          <Card className="mt-4 p-4">
-            <h3 className="text-lg font-black text-ulv-blue">Últimas búsquedas</h3>
-            {catalogSummary.recentSearches.length === 0 ? <p className="mt-2 text-sm text-slate-600">Aún no tienes búsquedas recientes.</p> : <div className="mt-3 flex flex-wrap gap-2">{catalogSummary.recentSearches.map((item) => <span key={item.id} className="rounded-full bg-ulv-yellow px-3 py-1 text-xs font-black text-ulv-blue">{item.query}</span>)}</div>}
-            <Link href="/soporte" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl border border-ulv-blue px-4 text-sm font-black text-ulv-blue">Solicitar soporte</Link>
-          </Card>
-        </section>
-      ) : null}
-
-      {role === "librarian" || role === "admin" || role === "superadmin" ? (
-        <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-ulv-blue">Cuenta</p>
-              <h2 className="mt-1 text-2xl font-black text-slate-950">Accesos personales</h2>
-            </div>
-            <div className="grid gap-3 sm:flex">
-              <Link href="/mi-cuenta" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-blue px-4 text-sm font-black text-white">Mi cuenta</Link>
-              <Link href="/notificaciones" className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-ulv-blue px-4 text-sm font-black text-ulv-blue">Notificaciones</Link>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      <ActionSection title="Más opciones" eyebrow="Secundario" cards={moreCards} />
+        )}
+      </section>
 
       <div className="mt-7 space-y-4">
+        <DashboardAccordionSection id="quick" title="Accesos rápidos" eyebrow="Inicio" openSection={openSection} onToggle={handleToggleSection}>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {quickCards.map((card) => <QuickAccessCard key={card.title} card={card} />)}
+          </div>
+        </DashboardAccordionSection>
+
+        <DashboardAccordionSection id="reservations" title="Reservas" eyebrow="Espacios" openSection={openSection} onToggle={handleToggleSection}>
+          {hasSession ? (
+            <Card>
+              <h3 className="text-lg font-black text-ulv-blue">Próxima reserva</h3>
+              {nextReservation ? (
+                <>
+                  <p className="mt-2 font-black text-slate-900">{nextReservation.library_spaces?.name ?? "Espacio"}</p>
+                  <p className="mt-1 text-sm text-slate-600">{nextReservation.libraries?.name ?? "Biblioteca"}</p>
+                  <p className="mt-2 text-sm font-bold text-slate-900">{formatDateTime(nextReservation.start_at)}</p>
+                  <p className="mt-1 text-sm text-slate-600">Estado: {getReservationStatusLabel(nextReservation.status)}</p>
+                </>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-slate-600">No tienes reservas próximas.</p>
+              )}
+              <Link href="/reservas-espacios" className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-4 text-sm font-bold text-ulv-blue">Reservar espacio</Link>
+            </Card>
+          ) : (
+            <Card>
+              <p className="text-sm font-semibold text-slate-600">Inicia sesión para reservar espacios de biblioteca.</p>
+              <Link href="/login" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-5 text-sm font-black text-ulv-blue">Iniciar sesión</Link>
+            </Card>
+          )}
+        </DashboardAccordionSection>
 
         <DashboardAccordionSection id="services" title="Servicios destacados" eyebrow="Biblioteca" openSection={openSection} onToggle={handleToggleSection}>
           {latestServices.length === 0 ? (
