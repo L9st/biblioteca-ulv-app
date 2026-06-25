@@ -120,7 +120,6 @@ export function QrScannerPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [message, setMessage] = useState("");
   const [manualCode, setManualCode] = useState("");
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [result, setResult] = useState<AttendanceQrValidation | null>(null);
   const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics>({
@@ -222,7 +221,6 @@ export function QrScannerPanel() {
       permissionStream.getTracks().forEach((track) => track.stop());
 
       const devices = await loadVideoDevices();
-      setVideoDevices(devices);
       setDiagnostics(mergeDiagnostics({ cameraCount: devices.length, lastError: "Sin errores recientes", technicalDetail: "Permiso de cámara concedido" }));
 
       const { Html5Qrcode } = await import("html5-qrcode");
@@ -279,17 +277,6 @@ export function QrScannerPanel() {
     hasProcessedScanRef.current = false;
     setStatus("ready");
     setMessage("");
-  }
-
-  async function handleSelectDevice(deviceId: string) {
-    setSelectedDeviceId(deviceId);
-
-    if (status === "scanning") {
-      await stopScanner(scannerRef.current);
-      scannerRef.current = null;
-      setStatus("ready");
-      setMessage("Cámara seleccionada. Presiona Abrir cámara para iniciar nuevamente.");
-    }
   }
 
   function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
