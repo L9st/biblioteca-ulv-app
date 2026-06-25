@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Activity, BarChart3, Bell, Building2, CalendarCheck, CalendarClock, CheckSquare, CircleHelp, ClipboardList, FileClock, Headphones, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
+import { Badge } from "@/app/ui/Badge";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -199,7 +200,7 @@ export function AdminDashboardPanel() {
         {error ? <p className="mt-3 text-sm font-bold text-red-700">{error}</p> : null}
         <Link
           href="/login?redirect=/admin"
-          className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]"
+          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95"
         >
           Iniciar sesión
         </Link>
@@ -219,11 +220,11 @@ export function AdminDashboardPanel() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl border border-ulv-blue bg-ulv-blue p-5 text-white shadow-sm">
+      <section className="rounded-2xl bg-ulv-blue p-5 text-white shadow-sm sm:p-6">
         <p className="text-sm font-bold text-ulv-yellow">Sesión iniciada como:</p>
         <h2 className="mt-2 text-2xl font-black">{currentUser.name || currentUser.email}</h2>
         <p className="mt-1 text-sm text-white/85">{currentUser.email}</p>
-        <p className="mt-3 inline-flex rounded-full bg-ulv-yellow px-3 py-1 text-xs font-black text-ulv-blue">
+        <p className="mt-3 inline-flex rounded-full bg-ulv-yellow px-3 py-1 text-xs font-semibold text-ulv-blue">
           Rol: {currentUser.role}
         </p>
       </section>
@@ -238,13 +239,9 @@ export function AdminDashboardPanel() {
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
                   <Icon className="h-6 w-6" aria-hidden="true" />
                 </span>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-black ${
-                    card.status === "Disponible" ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-700"
-                  }`}
-                >
+                <Badge tone={card.status === "Disponible" ? "green" : "slate"}>
                   {card.status}
-                </span>
+                </Badge>
               </div>
 
               <h3 className="mt-4 text-xl font-black text-ulv-blue">{card.title}</h3>
@@ -252,7 +249,7 @@ export function AdminDashboardPanel() {
 
               <Link
                 href={card.href}
-                className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]"
+                className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95"
               >
                 {card.buttonLabel}
               </Link>

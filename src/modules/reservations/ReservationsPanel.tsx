@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { CalendarCheck, ShieldAlert } from "lucide-react";
+import { Badge, getStatusBadgeTone } from "@/app/ui/Badge";
 import { Card } from "@/app/ui/Card";
 import { DropdownSelect } from "@/app/ui/DropdownSelect";
 import { supabase } from "@/lib/supabase";
@@ -54,10 +55,10 @@ function getBlockClassName(isOccupied: boolean, status?: string) {
   return "border-ulv-yellow bg-ulv-yellow/20 text-ulv-blue";
 }
 
-const activeButtonClass = "border-ulv-blue bg-ulv-blue text-white shadow-sm";
-const inactiveButtonClass = "border-slate-200 bg-white text-ulv-blue hover:border-ulv-yellow";
-const selectionButtonBaseClass = "w-full rounded-xl border px-2 py-2 text-center text-xs font-black leading-tight transition sm:w-auto sm:px-4 sm:text-sm";
-const fieldClass = "mt-2 min-h-12 w-full min-w-0 max-w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10";
+const activeButtonClass = "border-ulv-yellow bg-ulv-yellow text-ulv-blue shadow-sm";
+const inactiveButtonClass = "border-slate-200 bg-white text-ulv-blue hover:bg-slate-50";
+const selectionButtonBaseClass = "w-full rounded-xl border px-2 py-2 text-center text-xs font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-4 sm:text-sm";
+const fieldClass = "mt-2 min-h-11 w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-ulv-blue focus:ring-2 focus:ring-ulv-blue/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
 export function ReservationsPanel() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("reserve");
@@ -258,7 +259,7 @@ export function ReservationsPanel() {
         <h2 className="mt-3 text-xl font-black text-ulv-blue">Debes iniciar sesión para acceder a esta sección.</h2>
         <Link
           href="/login?redirect=/reservas-espacios"
-          className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]"
+          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95"
         >
           Iniciar sesión
         </Link>
@@ -271,7 +272,7 @@ export function ReservationsPanel() {
       {feedback ? (
         <p
           className={`rounded-2xl p-4 text-sm font-bold ${
-            feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+            feedback.type === "success" ? "border border-green-100 bg-green-50 text-green-700" : "border border-red-100 bg-red-50 text-red-700"
           }`}
         >
           {feedback.message}
@@ -439,7 +440,7 @@ export function ReservationsPanel() {
           </div>
           <div className="space-y-3 md:hidden">
             {reservations.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm font-semibold text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
                 Aun no tienes reservas.
               </div>
             ) : (
@@ -450,9 +451,9 @@ export function ReservationsPanel() {
                       <h3 className="break-words text-base font-black text-ulv-blue">{reservation.library_spaces?.name ?? "Espacio"}</h3>
                       <p className="mt-1 break-words text-sm leading-snug text-slate-600">{reservation.libraries?.name ?? "Biblioteca"}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-ulv-blue px-3 py-1 text-xs font-black text-white">
+                    <Badge tone={getStatusBadgeTone(reservation.status)} className="shrink-0">
                       {getReservationStatusLabel(reservation.status)}
-                    </span>
+                    </Badge>
                   </div>
                   <dl className="mt-4 grid grid-cols-1 gap-3 text-sm">
                     <div>
@@ -478,7 +479,7 @@ export function ReservationsPanel() {
                     <button
                       type="button"
                       onClick={() => void handleCancel(reservation.id)}
-                      className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-3 py-2 text-xs font-black text-ulv-blue"
+                      className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-100"
                     >
                       Cancelar reserva
                     </button>
@@ -516,14 +517,14 @@ export function ReservationsPanel() {
                       <td className="break-words px-4 py-3">{reservation.libraries?.name ?? "Biblioteca"}</td>
                       <td className="px-4 py-3">{formatDate(reservation.start_at)}</td>
                       <td className="px-4 py-3">{formatTime(reservation.start_at)} - {formatTime(reservation.end_at)}</td>
-                      <td className="px-4 py-3 font-bold">{getReservationStatusLabel(reservation.status)}</td>
+                      <td className="px-4 py-3"><Badge tone={getStatusBadgeTone(reservation.status)}>{getReservationStatusLabel(reservation.status)}</Badge></td>
                       <td className="break-words px-4 py-3 text-slate-700">{reservation.purpose ?? "Sin motivo"}</td>
                       <td className="px-4 py-3">
                         {canCancel(reservation.status) ? (
                           <button
                             type="button"
                             onClick={() => void handleCancel(reservation.id)}
-                            className="rounded-xl bg-ulv-yellow px-3 py-2 text-xs font-black text-ulv-blue"
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-100"
                           >
                             Cancelar reserva
                           </button>
@@ -547,7 +548,7 @@ export function ReservationsPanel() {
               <h2 className="text-xl font-black text-ulv-blue">Calendario de disponibilidad</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">Consulta horarios ocupados sin ver datos personales de otros usuarios.</p>
             </div>
-            <button type="button" onClick={() => void loadCalendar()} disabled={isCalendarLoading} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800] disabled:opacity-60 md:w-auto">
+            <button type="button" onClick={() => void loadCalendar()} disabled={isCalendarLoading} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 md:w-auto">
               {isCalendarLoading ? "Cargando..." : "Actualizar calendario"}
             </button>
           </div>
@@ -560,15 +561,15 @@ export function ReservationsPanel() {
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {calendarSpaces.length === 0 ? <p className="rounded-2xl bg-white p-5 text-center text-sm font-semibold text-slate-500">Selecciona una biblioteca o espacio disponible.</p> : null}
+            {calendarSpaces.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Selecciona una biblioteca o espacio disponible.</p> : null}
             {calendarSpaces.map((space) => {
               const blocks = buildDaySchedule({ date: calendarDate, reservations: calendarReservations, spaceId: space.id, currentUserId });
               const dayReservations = calendarReservations.filter((reservation) => reservation.space_id === space.id);
               return (
-                <section key={space.id} className="rounded-3xl border border-slate-200 bg-white p-4">
+                <section key={space.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0"><h3 className="break-words text-lg font-black text-ulv-blue">{space.name}</h3><p className="mt-1 text-sm text-slate-600">{space.libraries?.name ?? "Biblioteca"}</p></div>
-                    <span className="w-fit rounded-full bg-ulv-blue px-3 py-1 text-xs font-black text-white">{dayReservations.length} reservas</span>
+                    <Badge tone="blue" className="w-fit">{dayReservations.length} reservas</Badge>
                   </div>
                   <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
                     {blocks.map((block) => (
@@ -579,8 +580,8 @@ export function ReservationsPanel() {
                     ))}
                   </div>
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <button type="button" onClick={() => { setSpaceId(space.id); setStartAt(`${calendarDate}T07:00`); setEndAt(`${calendarDate}T08:00`); setActiveTab("reserve"); }} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-4 py-2 text-sm font-black text-ulv-blue">Reservar este espacio</button>
-                    <button type="button" onClick={() => setActiveTab("mine")} className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-2 text-sm font-black text-ulv-blue">Ver mis reservas</button>
+                    <button type="button" onClick={() => { setSpaceId(space.id); setStartAt(`${calendarDate}T07:00`); setEndAt(`${calendarDate}T08:00`); setActiveTab("reserve"); }} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95">Reservar este espacio</button>
+                    <button type="button" onClick={() => setActiveTab("mine")} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50">Ver mis reservas</button>
                   </div>
                 </section>
               );

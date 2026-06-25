@@ -226,7 +226,7 @@ export function MyCatalogResourcesPanel() {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:px-8 md:pb-8">
-      <section className="rounded-[2rem] bg-ulv-blue p-5 text-white shadow-sm md:p-8">
+      <section className="rounded-2xl bg-ulv-blue p-5 text-white shadow-sm md:p-8">
         <p className="text-sm font-bold text-ulv-yellow">Catálogo personal</p>
         <h1 className="mt-2 text-3xl font-black leading-tight md:text-5xl">Mis recursos</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Consulta tus recursos guardados, favoritos e historial de búsquedas del catálogo.</p>

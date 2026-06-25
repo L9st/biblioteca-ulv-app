@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, CalendarCheck, Clock3, LayoutDashboard, LogOut, MapPinned, RefreshCw, ShieldAlert, UserRound } from "lucide-react";
+import { Badge, getStatusBadgeTone } from "@/app/ui/Badge";
 import { Card } from "@/app/ui/Card";
 import { PageContainer } from "@/app/layout/PageContainer";
 import { supabase } from "@/lib/supabase";
@@ -112,9 +113,9 @@ function ReservationCard({ reservation }: { reservation: AccountReservation }) {
           <h3 className="font-black text-ulv-blue">{reservation.library_spaces?.name ?? "Espacio"}</h3>
           <p className="mt-1 text-sm text-slate-600">{reservation.libraries?.name ?? "Biblioteca"}</p>
         </div>
-        <span className="rounded-full bg-ulv-blue/10 px-3 py-1 text-xs font-black text-ulv-blue">
+        <Badge tone={getStatusBadgeTone(reservation.status)}>
           {reservationStatusLabels[reservation.status]}
-        </span>
+        </Badge>
       </div>
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <div>
@@ -272,9 +273,9 @@ export function MyAccountPanel() {
 
   return (
     <PageContainer>
-      {error ? <p className="mb-5 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+      {error ? <p className="mb-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</p> : null}
 
-      <section className="rounded-[2rem] bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
+      <section className="rounded-2xl bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-ulv-yellow">Mi cuenta</p>

@@ -172,13 +172,13 @@ export function AdminCatalogStatsPanel() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] bg-ulv-blue p-5 text-white shadow-sm md:p-8">
+      <section className="rounded-2xl bg-ulv-blue p-5 text-white shadow-sm md:p-8">
         <p className="text-sm font-bold text-ulv-yellow">Panel bibliotecario</p>
         <h1 className="mt-2 text-3xl font-black leading-tight md:text-5xl">Estadísticas del catálogo</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Consulta qué buscan más los usuarios en el catálogo Koha desde Biblioteca ULV App.</p>
       </section>
 
-      {feedback ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{feedback}</p> : null}
+      {feedback ? <p className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{feedback}</p> : null}
 
       <Card>
         <div className="grid gap-4 md:grid-cols-4">

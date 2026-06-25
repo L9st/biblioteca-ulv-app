@@ -67,9 +67,9 @@ export function AnnouncementsPanel() {
 
   return (
     <PageContainer>
-      {error ? <p className="mb-5 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+      {error ? <p className="mb-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</p> : null}
 
-      <section className="rounded-[2rem] bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
+      <section className="rounded-2xl bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
         <p className="text-sm font-semibold text-ulv-yellow">Avisos</p>
         <h1 className="mt-3 text-3xl font-black leading-tight md:text-5xl">Avisos y comunicados</h1>
         <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">

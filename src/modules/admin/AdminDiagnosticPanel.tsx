@@ -68,13 +68,13 @@ export function AdminDiagnosticPanel() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] bg-ulv-blue p-5 text-white shadow-sm md:p-8">
+      <section className="rounded-2xl bg-ulv-blue p-5 text-white shadow-sm md:p-8">
         <p className="text-sm font-bold text-ulv-yellow">Panel técnico</p>
         <h1 className="mt-2 text-3xl font-black leading-tight md:text-5xl">Diagnóstico del sistema</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Revisa variables, conexión, datos iniciales y estado técnico de Biblioteca ULV App.</p>
       </section>
 
-      {error ? <p className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{error}</p> : null}
+      {error ? <p className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</p> : null}
 
       <Card>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -24,7 +24,7 @@ const searchTypeLabels: Record<CatalogSearchType, string> = {
 };
 
 const examples = ["matemáticas", "administración", "educación cristiana", "programación", "historia"];
-const fieldClass = "mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10";
+const fieldClass = "mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-ulv-blue focus:ring-2 focus:ring-ulv-blue/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
 function openExternalUrl(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
@@ -125,14 +125,14 @@ export function CatalogPanel() {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 lg:px-8 md:pb-8">
-      <section className="rounded-[2rem] bg-ulv-blue p-5 text-white shadow-sm md:p-8">
+      <section className="rounded-2xl bg-ulv-blue p-5 text-white shadow-sm md:p-8">
         <p className="text-sm font-bold text-ulv-yellow">Biblioteca ULV</p>
         <h1 className="mt-2 text-3xl font-black leading-tight md:text-5xl">Catálogo Koha</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Busca libros, autores, temas o ISBN en el catálogo bibliográfico de la biblioteca.</p>
       </section>
 
-      {feedback ? <p className="mt-5 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">{feedback}</p> : null}
-      {!baseUrl ? <p className="mt-5 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">No se configuró la URL del OPAC de Koha.</p> : null}
+      {feedback ? <p className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{feedback}</p> : null}
+      {!baseUrl ? <p className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">No se configuró la URL del OPAC de Koha.</p> : null}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <Card>
@@ -159,14 +159,14 @@ export function CatalogPanel() {
             </label>
             <div className="md:col-span-2">
               <div className="grid gap-3 sm:flex sm:flex-wrap">
-                <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] sm:w-auto">
+                <button type="submit" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95 sm:w-auto">
                   Buscar en Koha
                   <ExternalLink className="h-4 w-4" aria-hidden="true" />
                 </button>
-                <button type="button" onClick={() => void handleSaveSearch()} disabled={isSavingSearch} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-ulv-blue px-5 py-3 text-sm font-black text-ulv-blue transition hover:bg-ulv-bg disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                <button type="button" onClick={() => void handleSaveSearch()} disabled={isSavingSearch} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
                   {isSavingSearch ? "Guardando..." : "Guardar búsqueda"}
                 </button>
-                <Link href="/mis-recursos" className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-blue px-5 py-3 text-sm font-black text-white transition hover:bg-ulv-blue/90 sm:w-auto">
+                <Link href="/mis-recursos" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50 sm:w-auto">
                   Ver mis recursos
                 </Link>
               </div>
@@ -180,7 +180,7 @@ export function CatalogPanel() {
           <p className="mt-2 text-sm leading-6 text-slate-600">Toca un ejemplo para cargarlo en el formulario.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {examples.map((example) => (
-              <button key={example} type="button" onClick={() => setQuery(example)} className="min-h-10 rounded-2xl border border-ulv-blue/20 bg-white px-4 py-2 text-sm font-black text-ulv-blue transition hover:bg-ulv-yellow/20">
+              <button key={example} type="button" onClick={() => setQuery(example)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue transition hover:bg-slate-50">
                 {example}
               </button>
             ))}
@@ -192,7 +192,7 @@ export function CatalogPanel() {
         <h2 className="text-xl font-black text-ulv-blue">Accesos rápidos</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {quickLinks.map((link) => {
-            const content = <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue"><BookOpen className="h-5 w-5" aria-hidden="true" /></span><h3 className="mt-4 text-lg font-black text-ulv-blue">{link.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{link.description}</p><span className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-2xl border border-ulv-blue/20 bg-white px-4 text-sm font-black text-ulv-blue">Abrir {link.external ? <ExternalLink className="h-4 w-4" aria-hidden="true" /> : null}</span></Card>;
+            const content = <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue"><BookOpen className="h-5 w-5" aria-hidden="true" /></span><h3 className="mt-4 text-lg font-black text-ulv-blue">{link.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{link.description}</p><span className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-ulv-blue shadow-sm">Abrir {link.external ? <ExternalLink className="h-4 w-4" aria-hidden="true" /> : null}</span></Card>;
             if (!link.url) return <div key={link.title} className="opacity-60">{content}</div>;
             if (link.external) return <a key={link.title} href={link.url} target="_blank" rel="noopener noreferrer">{content}</a>;
             return <Link key={link.title} href={link.url}>{content}</Link>;

@@ -13,7 +13,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
 
   return (
     <PageContainer>
-      <section className="rounded-[2rem] bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
+      <section className="rounded-2xl bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
         <p className="text-sm font-semibold text-ulv-yellow">Servicios de biblioteca</p>
         <h1 className="mt-3 text-3xl font-black leading-tight md:text-5xl">{service.title}</h1>
         <p className="mt-3 max-w-2xl text-base leading-7 text-white/85">{service.summary ?? "Información del servicio bibliotecario."}</p>

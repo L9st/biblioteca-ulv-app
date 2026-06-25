@@ -100,7 +100,7 @@ export function AdminProductionStatusPanel() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] bg-ulv-blue p-5 text-white shadow-sm md:p-8">
+      <section className="rounded-2xl bg-ulv-blue p-5 text-white shadow-sm md:p-8">
         <p className="text-sm font-bold text-ulv-yellow">Producción</p>
         <h1 className="mt-2 text-3xl font-black leading-tight md:text-5xl">Estado de producción</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-white/85">Revisa visualmente si Biblioteca ULV App está lista para publicarse o entregarse.</p>

@@ -53,7 +53,7 @@ export function InstallAppButton() {
   if (isInstalled || !installPrompt) return null;
 
   return (
-    <section className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-black/5">
+    <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
       <p className="text-sm font-bold text-ulv-blue">Instalar app</p>
       <h2 className="mt-2 text-xl font-black text-slate-950">Instalar Biblioteca ULV</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -62,7 +62,7 @@ export function InstallAppButton() {
       <button
         type="button"
         onClick={() => void handleInstall()}
-        className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] sm:w-auto"
+        className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95 sm:w-auto"
       >
         Instalar app
       </button>

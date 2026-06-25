@@ -84,8 +84,8 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
     <Card>
       {feedback ? (
         <div
-          className={`mb-4 rounded-2xl p-4 text-sm font-bold ${
-            feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+          className={`mb-4 rounded-2xl border p-4 text-sm ${
+            feedback.type === "success" ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"
           }`}
         >
           {feedback.message}
@@ -100,7 +100,7 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
             <button
               type="button"
               onClick={() => router.push(safeRedirectPath)}
-              className="min-h-12 rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]"
+              className="min-h-11 rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95"
             >
               {safeRedirectPath === "/horas" ? "Ir a mis horas" : "Continuar"}
             </button>
@@ -108,7 +108,7 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
               type="button"
               onClick={handleSignOut}
               disabled={isSubmitting}
-              className="min-h-12 rounded-2xl bg-ulv-blue px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#053757] disabled:opacity-60"
+              className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cerrar sesión
             </button>
@@ -118,7 +118,7 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
         <div>
           <div className="space-y-4">
             <div>
-              <label htmlFor="email" className="text-sm font-bold text-ulv-blue">
+              <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
                 Correo electrónico
               </label>
               <input
@@ -126,12 +126,12 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-ulv-blue focus:ring-2 focus:ring-ulv-yellow"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-ulv-blue focus:ring-2 focus:ring-ulv-blue/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                 placeholder="usuario@ulv.edu.mx"
               />
             </div>
             <div>
-              <label htmlFor="password" className="text-sm font-bold text-ulv-blue">
+              <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
                 Contraseña
               </label>
               <input
@@ -139,7 +139,7 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-ulv-blue focus:ring-2 focus:ring-ulv-yellow"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-ulv-blue focus:ring-2 focus:ring-ulv-blue/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                 placeholder="Tu contraseña"
               />
             </div>
@@ -150,7 +150,7 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
               type="button"
               onClick={handleSignIn}
               disabled={isSubmitting || !email || !password}
-              className="min-h-12 rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800] disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-11 rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "Iniciando sesión..." : "Iniciar sesión"}
             </button>
@@ -158,7 +158,7 @@ export function LoginForm({ redirectPath }: LoginFormProps) {
               type="button"
               onClick={handleSignUp}
               disabled={isSubmitting || !email || !password}
-              className="min-h-12 rounded-2xl bg-ulv-blue px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#053757] disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Registrar usuario de prueba
             </button>

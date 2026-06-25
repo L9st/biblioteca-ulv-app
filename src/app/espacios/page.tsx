@@ -50,8 +50,8 @@ export default async function EspaciosPage({ searchParams }: EspaciosPageProps) 
     : "Verifica que existan espacios activos en Supabase.";
 
   return (
-    <main className="min-h-screen bg-ulv-bg px-4 pb-28 pt-6 md:pb-6">
-      <section className="mx-auto max-w-5xl">
+    <main className="mx-auto min-h-screen w-full max-w-7xl bg-ulv-bg px-4 py-6 pb-24 sm:px-6 lg:px-8 md:pb-8">
+      <section>
         <div className="mb-6 rounded-2xl bg-ulv-blue p-5 text-white shadow-sm">
           <p className="text-sm font-medium text-ulv-yellow">
             Biblioteca ULV
@@ -68,11 +68,11 @@ export default async function EspaciosPage({ searchParams }: EspaciosPageProps) 
         <LibraryFilterDropdown selectedLibraryCode={selectedLibraryCode} selectedLibraryLabel={selectedLibraryLabel} />
 
         {filteredSpaces.length === 0 ? (
-          <div className="rounded-2xl bg-white p-6 text-center shadow-sm">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
             <h2 className="text-lg font-semibold text-ulv-blue">
               {emptyTitle}
             </h2>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-slate-500">
               {emptyMessage}
             </p>
           </div>
@@ -81,7 +81,7 @@ export default async function EspaciosPage({ searchParams }: EspaciosPageProps) 
             {filteredSpaces.map((space) => (
               <article
                 key={space.id}
-                className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+                className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm"
               >
                 <div className="flex h-36 items-center justify-center bg-ulv-blue/10">
                   {space.image_url ? (
@@ -105,17 +105,17 @@ export default async function EspaciosPage({ searchParams }: EspaciosPageProps) 
                     </h2>
 
                     {space.is_reservable && (
-                      <span className="rounded-full bg-ulv-yellow px-2 py-1 text-xs font-semibold text-ulv-blue">
+                    <span className="inline-flex items-center rounded-full bg-ulv-yellow/25 px-2.5 py-1 text-xs font-medium text-ulv-blue">
                         Reservable
                       </span>
                     )}
                   </div>
 
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-slate-600">
                     {space.description ?? "Sin descripción registrada."}
                   </p>
 
-                  <div className="mt-3 space-y-1 text-sm text-gray-700">
+                  <div className="mt-3 space-y-1 text-sm text-slate-700">
                     <p>
                       <span className="font-semibold text-ulv-blue">
                         Biblioteca:
@@ -144,7 +144,7 @@ export default async function EspaciosPage({ searchParams }: EspaciosPageProps) 
 
                   <Link
                     href={`/espacios/${space.slug}`}
-                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-bold text-ulv-blue transition hover:scale-[1.02]"
+                    className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95"
                   >
                     Ver espacio
                   </Link>

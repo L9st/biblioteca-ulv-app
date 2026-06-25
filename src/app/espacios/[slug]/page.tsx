@@ -35,7 +35,7 @@ export default async function SpaceDetailPage({ params }: SpaceDetailPageProps) 
         </Link>
       </div>
 
-      <article className="overflow-hidden rounded-[2rem] bg-white shadow-sm ring-1 ring-slate-200">
+      <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="flex min-h-64 items-center justify-center bg-ulv-blue/10">
           {space.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element

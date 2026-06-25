@@ -13,6 +13,7 @@ import {
   type AppNotification,
 } from "@/services/notifications.service";
 import { Card } from "@/app/ui/Card";
+import { Badge } from "@/app/ui/Badge";
 
 type Feedback = { type: "success" | "error"; message: string };
 
@@ -90,14 +91,14 @@ export function NotificationsPanel() {
     await loadData({ showLoading: false });
   }
 
-  if (isLoading) return <Card><p className="text-sm font-semibold text-slate-600">Cargando notificaciones...</p></Card>;
+   if (isLoading) return <Card><p className="text-sm text-slate-500">Cargando notificaciones...</p></Card>;
 
   if (!isAuthenticated) {
     return (
       <Card className="text-center">
         <ShieldAlert className="mx-auto h-10 w-10 text-ulv-blue" aria-hidden="true" />
         <h2 className="mt-3 text-xl font-black text-ulv-blue">Debes iniciar sesión para acceder a esta sección.</h2>
-        <Link href="/login?redirect=/notificaciones" className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]">
+        <Link href="/login?redirect=/notificaciones" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95">
           Iniciar sesión
         </Link>
       </Card>
@@ -106,7 +107,7 @@ export function NotificationsPanel() {
 
   return (
     <div className="space-y-5">
-      {feedback ? <p className={`rounded-2xl p-4 text-sm font-bold ${feedback.type === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>{feedback.message}</p> : null}
+      {feedback ? <p className={`rounded-2xl border p-4 text-sm ${feedback.type === "success" ? "border-green-100 bg-green-50 text-green-700" : "border-red-100 bg-red-50 text-red-700"}`}>{feedback.message}</p> : null}
       <Card>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
@@ -116,15 +117,15 @@ export function NotificationsPanel() {
             <div>
               <h2 className="text-xl font-black text-ulv-blue">Notificaciones</h2>
               <p className="mt-1 text-sm text-slate-600">Consulta tus avisos y actualizaciones.</p>
-              <p className="mt-2 inline-flex rounded-full bg-ulv-blue px-3 py-1 text-xs font-black text-white">No leídas: {unreadCount}</p>
+              <Badge tone="blue" className="mt-2">No leídas: {unreadCount}</Badge>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <button type="button" onClick={() => void loadData({ showLoading: false })} disabled={isRefreshing} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60">
+            <button type="button" onClick={() => void loadData({ showLoading: false })} disabled={isRefreshing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
               <RefreshCw className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`} aria-hidden="true" />
               Refrescar
             </button>
-            <button type="button" onClick={() => void handleMarkAllRead()} className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue shadow-sm transition hover:bg-[#e8b800]">
+            <button type="button" onClick={() => void handleMarkAllRead()} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95">
               Marcar todas como leídas
             </button>
           </div>
@@ -132,7 +133,7 @@ export function NotificationsPanel() {
       </Card>
 
       {notifications.length === 0 ? (
-        <Card className="text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-ulv-blue" aria-hidden="true" /><p className="mt-3 text-sm font-bold text-slate-600">No tienes notificaciones.</p></Card>
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500"><CheckCircle2 className="mx-auto h-10 w-10 text-ulv-blue" aria-hidden="true" /><p className="mt-3">No tienes notificaciones.</p></div>
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => {
@@ -142,16 +143,16 @@ export function NotificationsPanel() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-ulv-blue px-3 py-1 text-xs font-black text-white">{getTypeLabel(notification.type)}</span>
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${isUnread ? "bg-ulv-yellow text-ulv-blue" : "bg-slate-100 text-slate-600"}`}>{isUnread ? "No leída" : "Leída"}</span>
+                      <Badge tone="blue">{getTypeLabel(notification.type)}</Badge>
+                      <Badge tone={isUnread ? "yellow" : "slate"}>{isUnread ? "No leída" : "Leída"}</Badge>
                     </div>
                     <h3 className="mt-3 text-lg font-black text-ulv-blue">{notification.title}</h3>
                     <p className="mt-2 text-sm leading-6 text-slate-700">{notification.message}</p>
                     <p className="mt-2 text-xs font-semibold text-slate-500">{formatDateTime(notification.created_at)}</p>
                   </div>
                   <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
-                    {notification.link_url ? <Link href={notification.link_url} className="inline-flex min-h-10 items-center justify-center rounded-xl bg-ulv-yellow px-4 text-xs font-black text-ulv-blue">Abrir</Link> : null}
-                    {isUnread ? <button type="button" onClick={() => void handleMarkRead(notification.id)} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-ulv-blue">Marcar como leída</button> : null}
+                    {notification.link_url ? <Link href={notification.link_url} className="inline-flex min-h-10 items-center justify-center rounded-xl bg-ulv-yellow px-4 text-xs font-semibold text-ulv-blue shadow-sm transition hover:brightness-95">Abrir</Link> : null}
+                    {isUnread ? <button type="button" onClick={() => void handleMarkRead(notification.id)} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-medium text-ulv-blue shadow-sm transition hover:bg-slate-50">Marcar como leída</button> : null}
                   </div>
                 </div>
               </Card>

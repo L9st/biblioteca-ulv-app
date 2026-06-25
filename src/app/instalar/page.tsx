@@ -6,7 +6,7 @@ import { PageContainer } from "@/app/layout/PageContainer";
 export default function InstallPage() {
   return (
     <PageContainer>
-      <section className="rounded-[2rem] bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
+      <section className="rounded-2xl bg-ulv-blue px-5 py-7 text-white shadow-sm md:px-8">
         <div className="flex items-start gap-4">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue">
             <Download className="h-6 w-6" aria-hidden="true" />
@@ -53,7 +53,7 @@ export default function InstallPage() {
 
       <Link
         href="/"
-        className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-black text-ulv-blue shadow-sm transition hover:bg-[#e8b800] sm:w-auto"
+        className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-ulv-yellow px-4 py-2 text-sm font-semibold text-ulv-blue shadow-sm transition hover:brightness-95 sm:w-auto"
       >
         Volver al inicio
       </Link>
