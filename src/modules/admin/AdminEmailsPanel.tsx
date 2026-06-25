@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Mail, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import { Card } from "@/app/ui/Card";
+import { supabase } from "@/lib/supabase";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { getEmailNotifications, type EmailNotification, type EmailNotificationStatus, type EmailNotificationType } from "@/services/email-notifications.service";
 
@@ -44,6 +45,7 @@ function getStatusClassName(status: EmailNotificationStatus) {
 export function AdminEmailsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminAppUser | null>(null);
   const [emails, setEmails] = useState<EmailNotification[]>([]);
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -82,6 +84,35 @@ export function AdminEmailsPanel() {
     return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleProcessQueue() {
+    setIsProcessing(true);
+    setFeedback(null);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setFeedback({ type: "error", message: "Debes iniciar sesión para procesar la cola." });
+      setIsProcessing(false);
+      return;
+    }
+
+    const response = await fetch("/api/admin/email/process", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await response.json().catch(() => null)) as { processed?: number; sent?: number; failed?: number; error?: string } | null;
+
+    if (!response.ok) {
+      setFeedback({ type: "error", message: payload?.error ?? "No se pudo procesar la cola de correos." });
+      setIsProcessing(false);
+      return;
+    }
+
+    setIsProcessing(false);
+    await loadData({ showLoading: false });
+    setFeedback({ type: "success", message: `Cola procesada: ${payload?.processed ?? 0} correos, ${payload?.sent ?? 0} enviados, ${payload?.failed ?? 0} fallidos.` });
+  }
 
   const summary = {
     queued: emails.filter((email) => email.status === "queued").length,
@@ -123,7 +154,10 @@ export function AdminEmailsPanel() {
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ulv-yellow text-ulv-blue"><Mail className="h-6 w-6" aria-hidden="true" /></span>
             <div><h2 className="text-xl font-black text-ulv-blue">Historial de correos</h2><p className="mt-1 text-sm text-slate-600">Consulta el estado de la cola de correos del sistema.</p></div>
           </div>
-          <button type="button" onClick={() => void loadData({ showLoading: false })} disabled={isRefreshing} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60 md:w-auto"><RefreshCw className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`} aria-hidden="true" />{isRefreshing ? "Actualizando..." : "Refrescar"}</button>
+          <div className="grid gap-3 md:flex">
+            <button type="button" onClick={() => void handleProcessQueue()} disabled={isProcessing} className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-ulv-yellow px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60 md:w-auto">{isProcessing ? "Procesando..." : "Procesar cola"}</button>
+            <button type="button" onClick={() => void loadData({ showLoading: false })} disabled={isRefreshing} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-ulv-blue px-5 py-3 text-sm font-bold text-ulv-blue disabled:opacity-60 md:w-auto"><RefreshCw className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`} aria-hidden="true" />{isRefreshing ? "Actualizando..." : "Refrescar"}</button>
+          </div>
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
