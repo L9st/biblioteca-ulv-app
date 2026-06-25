@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Bell, Building2, CalendarCheck, CalendarClock, CircleHelp, ClipboardList, FileClock, Headphones, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
+import { Activity, BarChart3, Bell, Building2, CalendarCheck, CalendarClock, CheckSquare, CircleHelp, ClipboardList, FileClock, Headphones, Mail, Megaphone, QrCode, ShieldAlert, Users, Wrench } from "lucide-react";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { Card } from "@/app/ui/Card";
 
@@ -120,6 +120,24 @@ const adminCards: AdminCard[] = [
     buttonLabel: "Ver estadísticas",
     status: "Disponible",
     icon: BarChart3,
+    globalStatsOnly: true,
+  },
+  {
+    title: "Diagnóstico del sistema",
+    description: "Revisa variables, conexión, datos iniciales y estado técnico de la app.",
+    href: "/admin/diagnostico",
+    buttonLabel: "Ver diagnóstico",
+    status: "Disponible",
+    icon: Activity,
+    globalStatsOnly: true,
+  },
+  {
+    title: "Estado de producción",
+    description: "Checklist visual para validar si la app está lista para uso real.",
+    href: "/admin/estado-produccion",
+    buttonLabel: "Ver checklist",
+    status: "Disponible",
+    icon: CheckSquare,
     globalStatsOnly: true,
   },
   {
