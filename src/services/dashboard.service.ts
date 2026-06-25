@@ -25,6 +25,11 @@ export type DashboardReservation = {
   libraries: { name: string; code: string } | null;
 };
 
+export type DashboardCatalogSummary = {
+  savedItems: number;
+  recentSearches: Array<{ id: string; query: string; created_at: string }>;
+};
+
 export type DashboardResult<T> = { data: T; error: string | null };
 
 type RawOpenAttendance = Omit<DashboardOpenAttendance, "libraries"> & {
@@ -108,4 +113,22 @@ export async function getNextReservation(): Promise<DashboardResult<DashboardRes
 
   const record = data as RawReservation;
   return { data: { ...record, library_spaces: normalizeRelation(record.library_spaces), libraries: normalizeRelation(record.libraries) }, error: null };
+}
+
+export async function getMyCatalogSummary(): Promise<DashboardResult<DashboardCatalogSummary>> {
+  const userId = await getCurrentUserId();
+  if (!userId) return { data: { savedItems: 0, recentSearches: [] }, error: null };
+
+  const [savedItemsResult, historyResult] = await Promise.all([
+    supabase.from("catalog_saved_items").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("catalog_search_history").select("id, query, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(3),
+  ]);
+
+  return {
+    data: {
+      savedItems: savedItemsResult.count ?? 0,
+      recentSearches: (historyResult.data ?? []) as Array<{ id: string; query: string; created_at: string }>,
+    },
+    error: savedItemsResult.error || historyResult.error ? "No se pudo cargar tu resumen de catálogo." : null,
+  };
 }
