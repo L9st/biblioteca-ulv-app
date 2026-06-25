@@ -63,10 +63,14 @@ function matchesSearch(notification: EmailNotification, search?: string) {
 
 async function triggerEmailQueueProcessing() {
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const session = data.session;
+  const token = session?.access_token;
   if (!token) return;
 
-  await fetch("/api/admin/email/trigger-process", {
+  const { data: profile } = await supabase.from("app_users").select("role, status").eq("id", session.user.id).maybeSingle();
+  if (!profile || profile.status !== "active" || (profile.role !== "admin" && profile.role !== "superadmin")) return;
+
+  await fetch("/api/admin/email/process", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   }).catch(() => null);

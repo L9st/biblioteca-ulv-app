@@ -122,6 +122,7 @@ async function buildDataSections(supabase: SupabaseClient): Promise<DiagnosticSe
     oldQueuedEmailsCheck(supabase),
     lastSentEmailCheck(supabase),
   ]);
+  emailChecks.unshift(check("email-plan", "Plan recomendado para correos", "ok", "Envío inmediato después de crear correo + cron diario de respaldo."));
   emailChecks.push(process.env.EMAIL_PROVIDER === "smtp" && isConfigured(process.env.SMTP_HOST) ? check("email-smtp", "SMTP", "ok", "SMTP configurado.") : check("email-smtp", "SMTP", "warning", "Proveedor de correo pendiente o incompleto."));
   emailChecks.push(buildCronConfigCheck());
 

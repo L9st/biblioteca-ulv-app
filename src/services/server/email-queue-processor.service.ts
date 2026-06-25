@@ -32,13 +32,12 @@ function createServerSupabaseClient() {
 export async function processEmailQueue(options: { limit?: number; includeFailed?: boolean } = {}): Promise<EmailQueueProcessResult> {
   const limit = options.limit ?? 10;
   const supabase = createServerSupabaseClient();
-  let query = supabase
+  const query = supabase
     .from("email_notifications")
     .select("id, to_email, subject, body, type, status, attempts, last_error, created_at, sent_at")
+    .eq("status", "queued")
     .order("created_at", { ascending: true })
     .limit(limit);
-
-  query = options.includeFailed ? query.in("status", ["queued", "failed"]) : query.eq("status", "queued");
 
   const { data: queuedEmails, error } = await query;
   if (error) throw new Error("No se pudo leer la cola de correos");

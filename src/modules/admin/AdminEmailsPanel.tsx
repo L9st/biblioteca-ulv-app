@@ -101,7 +101,7 @@ export function AdminEmailsPanel() {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    const payload = (await response.json().catch(() => null)) as { processed?: number; sent?: number; failed?: number; error?: string } | null;
+    const payload = (await response.json().catch(() => null)) as { processed?: number; sent?: number; failed?: number; skipped?: number; error?: string } | null;
 
     if (!response.ok) {
       setFeedback({ type: "error", message: payload?.error ?? "No se pudo procesar la cola de correos." });
@@ -109,9 +109,10 @@ export function AdminEmailsPanel() {
       return;
     }
 
+    const pending = Math.max(summary.queued - (payload?.processed ?? 0), 0);
     setIsProcessing(false);
     await loadData({ showLoading: false });
-    setFeedback({ type: "success", message: `Cola procesada: ${payload?.processed ?? 0} correos, ${payload?.sent ?? 0} enviados, ${payload?.failed ?? 0} fallidos.` });
+    setFeedback({ type: "success", message: `Correos procesados: ${payload?.processed ?? 0}. Enviados: ${payload?.sent ?? 0}. Fallidos: ${payload?.failed ?? 0}. Pendientes: ${pending}.` });
   }
 
   const summary = {
