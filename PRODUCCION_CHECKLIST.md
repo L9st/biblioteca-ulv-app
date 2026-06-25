@@ -2,8 +2,8 @@
 
 ## Pruebas PWA/offline
 
-- [ ] La app carga con HTTPS.
-- [ ] Manifest carga correctamente.
+- [1] La app carga con HTTPS.
+- [1] Manifest carga correctamente.
 - [ ] Service worker se registra.
 - [ ] Página /offline carga.
 - [ ] Al apagar internet aparece banner sin conexión.
