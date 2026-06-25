@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Bell, BookOpen, CalendarCheck, ChevronDown, CircleHelp, Clock3, ExternalLink, Headphones, LogIn, MapPinned, Megaphone, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -19,6 +19,8 @@ import { PageContainer } from "@/app/layout/PageContainer";
 import { InstallAppButton } from "@/components/pwa/InstallAppButton";
 import { getLatestLibraryServices, libraryServiceCategoryLabels, type PublicLibraryService } from "@/services/library-services.service";
 import { getLatestHelpArticles, helpCategoryLabels, type PublicHelpArticle } from "@/services/help.service";
+import { buildKohaSearchUrl } from "@/services/catalog.service";
+import { registerCatalogSearchEvent } from "@/services/catalog-analytics.service";
 
 type QuickCard = {
   title: string;
@@ -32,6 +34,7 @@ type QuickCard = {
 };
 
 type DashboardSectionId = "quick" | "reservations" | "services" | "help";
+type DashboardRole = "visitor" | "student" | "librarian" | "admin" | "superadmin";
 
 const emptyAttendanceSummary: AttendanceSummary = {
   todayMinutes: 0,
@@ -39,8 +42,10 @@ const emptyAttendanceSummary: AttendanceSummary = {
   monthMinutes: 0,
 };
 
-function canAccessAdmin(role: DashboardUser["role"] | null) {
-  return role === "librarian" || role === "admin" || role === "superadmin";
+function getDashboardRole(hasSession: boolean, role: DashboardUser["role"] | null | undefined): DashboardRole {
+  if (!hasSession) return "visitor";
+  if (role === "librarian" || role === "admin" || role === "superadmin") return role;
+  return "student";
 }
 
 function formatTime(value: string) {
@@ -146,6 +151,8 @@ export function HomeDashboard() {
   const [latestHelpArticles, setLatestHelpArticles] = useState<PublicHelpArticle[]>([]);
   const [openSection, setOpenSection] = useState<DashboardSectionId | null>("quick");
   const [error, setError] = useState<string | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogFeedback, setCatalogFeedback] = useState<string | null>(null);
   const kohaOpacUrl = process.env.NEXT_PUBLIC_KOHA_OPAC_URL;
 
   useEffect(() => {
@@ -184,34 +191,76 @@ export function HomeDashboard() {
     return () => window.clearTimeout(timeout);
   }, []);
 
-  const quickCards: QuickCard[] = [
-    ...(hasSession
+  const role = getDashboardRole(hasSession, user?.role);
+  const catalogCard: QuickCard = { title: "Catálogo Koha", description: "Busca libros, autores, temas o ISBN en el catálogo bibliográfico.", href: "/catalogo", buttonLabel: "Buscar catálogo", icon: BookOpen, badge: kohaOpacUrl ? undefined : "Configurar OPAC" };
+  const quickCards: QuickCard[] =
+    role === "visitor"
       ? [
-          { title: "Mi cuenta", description: "Perfil, horas, reservas y notificaciones.", href: "/mi-cuenta", buttonLabel: "Ver cuenta", icon: UserRound },
-          { title: "Mis horas", description: "Entradas, salidas y horas acumuladas.", href: "/horas", buttonLabel: "Ver horas", icon: Clock3 },
+          catalogCard,
+          { title: "Espacios", description: "Salas y áreas disponibles.", href: "/espacios", buttonLabel: "Ver espacios", icon: MapPinned },
+          { title: "Servicios", description: "Préstamos, orientación y recursos.", href: "/servicios", buttonLabel: "Ver servicios", icon: Wrench },
+          { title: "Ayuda", description: "Preguntas frecuentes y guías.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
+          { title: "Iniciar sesión", description: "Accede a horas y reservas.", href: "/login", buttonLabel: "Iniciar sesión", icon: LogIn },
         ]
-      : []),
-    { title: "Espacios", description: "Salas y áreas disponibles.", href: "/espacios", buttonLabel: "Ver espacios", icon: MapPinned },
-    { title: "Servicios", description: "Préstamos, orientación y recursos.", href: "/servicios", buttonLabel: "Ver servicios", icon: Wrench },
-    { title: "Avisos", description: "Horarios, cierres y eventos.", href: "/avisos", buttonLabel: "Ver avisos", icon: Megaphone },
-    { title: "Ayuda", description: "Preguntas frecuentes y guías.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
-    { title: "Mis recursos", description: "Consulta tus recursos guardados, favoritos e historial de búsquedas.", href: "/mis-recursos", buttonLabel: "Ver recursos", icon: BookOpen },
-    ...(hasSession
-      ? [
-          { title: "Reservas", description: "Solicita espacios disponibles.", href: "/reservas-espacios", buttonLabel: "Reservar", icon: CalendarCheck },
-          { title: "Soporte", description: "Reporta problemas o solicita ayuda sobre el uso de la app.", href: "/soporte", buttonLabel: "Solicitar ayuda", icon: Headphones },
-          { title: "Notificaciones", description: "Actividad de tu cuenta.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
-        ]
-      : []),
-    { title: "Catálogo Koha", description: "Busca libros y recursos disponibles en el catálogo bibliográfico.", href: "/catalogo", buttonLabel: "Buscar catálogo", icon: BookOpen, badge: kohaOpacUrl ? undefined : "Configurar OPAC" },
-    ...(hasSession && canAccessAdmin(user?.role ?? null)
-      ? [{ title: "Panel administrativo", description: "Gestión bibliotecaria.", href: "/admin", buttonLabel: "Abrir panel", icon: ShieldCheck }]
-      : []),
-    ...(!hasSession ? [{ title: "Iniciar sesión", description: "Accede a horas y reservas.", href: "/login", buttonLabel: "Iniciar sesión", icon: LogIn }] : []),
-  ];
+      : role === "student"
+        ? [
+            { title: "Reservar espacio", description: "Solicita espacios disponibles.", href: "/reservas-espacios", buttonLabel: "Reservar", icon: CalendarCheck },
+            { title: "Mis reservas", description: "Consulta tu próxima reserva y solicitudes.", href: "/reservas-espacios", buttonLabel: "Ver reservas", icon: CalendarCheck },
+            catalogCard,
+            { title: "Mis recursos", description: "Consulta recursos guardados, favoritos e historial.", href: "/mis-recursos", buttonLabel: "Ver recursos", icon: BookOpen },
+            { title: "Notificaciones", description: "Actividad de tu cuenta.", href: "/notificaciones", buttonLabel: "Ver notificaciones", icon: Bell, badge: unreadCount > 0 ? `${unreadCount} no leídas` : undefined },
+            { title: "Soporte", description: "Reporta problemas o solicita ayuda sobre el uso de la app.", href: "/soporte", buttonLabel: "Solicitar ayuda", icon: Headphones },
+            { title: "Ayuda", description: "Preguntas frecuentes y guías.", href: "/ayuda", buttonLabel: "Ver ayuda", icon: CircleHelp },
+            { title: "Espacios", description: "Salas y áreas disponibles.", href: "/espacios", buttonLabel: "Ver espacios", icon: MapPinned },
+            { title: "Servicios", description: "Préstamos, orientación y recursos.", href: "/servicios", buttonLabel: "Ver servicios", icon: Wrench },
+          ]
+        : role === "librarian"
+          ? [
+              { title: "Panel administrativo", description: "Gestión bibliotecaria diaria.", href: "/admin", buttonLabel: "Abrir panel", icon: ShieldCheck },
+              { title: "Reservas pendientes", description: "Revisa solicitudes de espacios.", href: "/admin/reservas", buttonLabel: "Ver reservas", icon: CalendarCheck },
+              { title: "Generar QR", description: "Crea códigos QR de asistencia.", href: "/admin/qr", buttonLabel: "Abrir QR", icon: ShieldCheck },
+              { title: "Asistencia", description: "Control de entrada, salida y usuarios activos.", href: "/admin/asistencia", buttonLabel: "Ver asistencia", icon: Clock3 },
+              { title: "Soporte", description: "Atiende solicitudes de usuarios.", href: "/admin/soporte", buttonLabel: "Gestionar soporte", icon: Headphones },
+              { title: "Avisos", description: "Publica comunicados de biblioteca.", href: "/admin/avisos", buttonLabel: "Gestionar avisos", icon: Megaphone },
+              { title: "Espacios", description: "Administra espacios de biblioteca.", href: "/admin/espacios", buttonLabel: "Ver espacios", icon: MapPinned },
+              { title: "Reportes", description: "Consulta reportes administrativos.", href: "/admin/reportes", buttonLabel: "Ver reportes", icon: ShieldCheck },
+              catalogCard,
+              { title: "Mi cuenta", description: "Perfil y accesos personales.", href: "/mi-cuenta", buttonLabel: "Ver cuenta", icon: UserRound },
+            ]
+          : [
+              { title: "Diagnóstico", description: "Revisa variables, conexión y datos iniciales.", href: "/admin/diagnostico", buttonLabel: "Ver diagnóstico", icon: ShieldCheck },
+              { title: "Estado de producción", description: "Checklist visual para validar la app.", href: "/admin/estado-produccion", buttonLabel: "Ver checklist", icon: ShieldCheck },
+              { title: "Usuarios", description: "Gestiona roles y accesos.", href: "/admin/usuarios", buttonLabel: "Administrar usuarios", icon: UserRound },
+              { title: "Reservas", description: "Administra reservas de espacios.", href: "/admin/reservas", buttonLabel: "Ver reservas", icon: CalendarCheck },
+              { title: "Reportes", description: "Consulta reportes administrativos.", href: "/admin/reportes", buttonLabel: "Ver reportes", icon: ShieldCheck },
+              { title: "Estadísticas del catálogo", description: "Consulta búsquedas y uso del catálogo.", href: "/admin/catalogo-estadisticas", buttonLabel: "Ver estadísticas", icon: BookOpen },
+              { title: "Correos", description: "Revisa cola, enviados y fallidos.", href: "/admin/correos", buttonLabel: "Ver correos", icon: Bell },
+              { title: "Auditoría", description: "Consulta acciones administrativas.", href: "/admin/auditoria", buttonLabel: "Ver auditoría", icon: ShieldCheck },
+              { title: "Soporte", description: "Gestiona solicitudes de usuarios.", href: "/admin/soporte", buttonLabel: "Gestionar soporte", icon: Headphones },
+              { title: "Configuración de reservas", description: "Define horarios y reglas de espacios.", href: "/admin/configuracion-reservas", buttonLabel: "Configurar", icon: CalendarCheck },
+              catalogCard,
+            ];
 
   function handleToggleSection(sectionId: DashboardSectionId) {
     setOpenSection((currentSection) => (currentSection === sectionId ? null : sectionId));
+  }
+
+  function handleCatalogSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCatalogFeedback(null);
+    const query = catalogQuery.trim();
+    if (!query) {
+      setCatalogFeedback("Escribe un término de búsqueda.");
+      return;
+    }
+
+    try {
+      const url = buildKohaSearchUrl({ query, type: "keyword" });
+      void registerCatalogSearchEvent({ query, searchType: "keyword", kohaUrl: url, source: "dashboard" });
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (searchError) {
+      setCatalogFeedback(searchError instanceof Error ? searchError.message : "No se pudo abrir el catálogo Koha.");
+    }
   }
 
   if (isLoading) {
@@ -244,7 +293,7 @@ export function HomeDashboard() {
         <InstallAppButton />
       </div>
 
-      <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+      {role === "student" ? <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.16em] text-ulv-blue">Horas y cuenta</p>
@@ -267,6 +316,21 @@ export function HomeDashboard() {
                   </p>
                 </div>
               </div>
+            </Card>
+
+            <Card className="p-4">
+              <h3 className="text-lg font-black text-ulv-blue">Buscar en catálogo Koha</h3>
+              <form onSubmit={handleCatalogSearch} className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px_150px]">
+                <input
+                  value={catalogQuery}
+                  onChange={(event) => setCatalogQuery(event.target.value)}
+                  placeholder="¿Qué libro, autor o tema buscas?"
+                  className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-ulv-blue focus:ring-4 focus:ring-ulv-blue/10"
+                />
+                <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-4 text-sm font-black text-ulv-blue">Buscar</button>
+                <Link href="/mis-recursos" className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-ulv-blue px-4 text-sm font-black text-ulv-blue">Mis recursos</Link>
+              </form>
+              {catalogFeedback ? <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-800">{catalogFeedback}</p> : null}
             </Card>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -300,7 +364,7 @@ export function HomeDashboard() {
             <Link href="/login" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-5 text-sm font-black text-ulv-blue">Iniciar sesión</Link>
           </Card>
         )}
-      </section>
+      </section> : null}
 
       <div className="mt-7 space-y-4">
         <DashboardAccordionSection id="quick" title="Accesos rápidos" eyebrow="Inicio" openSection={openSection} onToggle={handleToggleSection}>
@@ -309,7 +373,7 @@ export function HomeDashboard() {
           </div>
         </DashboardAccordionSection>
 
-        <DashboardAccordionSection id="reservations" title="Reservas" eyebrow="Espacios" openSection={openSection} onToggle={handleToggleSection}>
+        {role === "student" ? <DashboardAccordionSection id="reservations" title="Reservas" eyebrow="Espacios" openSection={openSection} onToggle={handleToggleSection}>
           {hasSession ? (
             <Card>
               <h3 className="text-lg font-black text-ulv-blue">Próxima reserva</h3>
@@ -331,7 +395,7 @@ export function HomeDashboard() {
               <Link href="/login" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl bg-ulv-yellow px-5 text-sm font-black text-ulv-blue">Iniciar sesión</Link>
             </Card>
           )}
-        </DashboardAccordionSection>
+        </DashboardAccordionSection> : null}
 
         <DashboardAccordionSection id="services" title="Servicios destacados" eyebrow="Biblioteca" openSection={openSection} onToggle={handleToggleSection}>
           {latestServices.length === 0 ? (

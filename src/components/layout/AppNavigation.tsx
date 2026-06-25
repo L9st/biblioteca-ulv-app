@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BookOpen, CalendarCheck, CircleHelp, Home, LogIn, LogOut, MapPinned, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CalendarCheck, CheckSquare, CircleHelp, Home, LogIn, LogOut, MapPinned, QrCode, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getCurrentAppUser, type AdminAppUser, type AppUserRole } from "@/services/admin-users.service";
 import { getUnreadNotificationsCount } from "@/services/dashboard.service";
@@ -29,19 +29,35 @@ const desktopNavItems: NavItem[] = [
   { href: "/admin", label: "Admin", shortLabel: "Admin", icon: ShieldCheck, requiresSession: true, adminOnly: true },
 ];
 
+const visitorMobileNavItems: NavItem[] = [
+  { href: "/", label: "Inicio", shortLabel: "Inicio", icon: Home },
+  { href: "/catalogo", label: "Catálogo", shortLabel: "Catálogo", icon: BookOpen },
+  { href: "/servicios", label: "Servicios", shortLabel: "Servicios", icon: Wrench },
+  { href: "/ayuda", label: "Ayuda", shortLabel: "Ayuda", icon: CircleHelp },
+  { href: "/login", label: "Iniciar sesión", shortLabel: "Entrar", icon: LogIn },
+];
+
 const studentMobileNavItems: NavItem[] = [
   { href: "/", label: "Inicio", shortLabel: "Inicio", icon: Home },
-  { href: "/espacios", label: "Espacios", shortLabel: "Espacios", icon: MapPinned },
+  { href: "/catalogo", label: "Catálogo", shortLabel: "Catálogo", icon: BookOpen },
   { href: "/reservas-espacios", label: "Reservas", shortLabel: "Reservar", icon: CalendarCheck, requiresSession: true },
   { href: "/notificaciones", label: "Notificaciones", shortLabel: "Notif.", icon: Bell, requiresSession: true, showBadge: true },
   { href: "/mi-cuenta", label: "Mi cuenta", shortLabel: "Cuenta", icon: UserRound, requiresSession: true },
 ];
 
-const staffMobileNavItems: NavItem[] = [
+const librarianMobileNavItems: NavItem[] = [
   { href: "/", label: "Inicio", shortLabel: "Inicio", icon: Home },
   { href: "/admin", label: "Admin", shortLabel: "Admin", icon: ShieldCheck, requiresSession: true, adminOnly: true },
   { href: "/admin/reservas", label: "Reservas", shortLabel: "Reservas", icon: CalendarCheck, requiresSession: true, adminOnly: true },
-  { href: "/notificaciones", label: "Notificaciones", shortLabel: "Notif.", icon: Bell, requiresSession: true, showBadge: true },
+  { href: "/admin/qr", label: "QR", shortLabel: "QR", icon: QrCode, requiresSession: true, adminOnly: true },
+  { href: "/mi-cuenta", label: "Mi cuenta", shortLabel: "Cuenta", icon: UserRound, requiresSession: true },
+];
+
+const adminMobileNavItems: NavItem[] = [
+  { href: "/", label: "Inicio", shortLabel: "Inicio", icon: Home },
+  { href: "/admin", label: "Admin", shortLabel: "Admin", icon: ShieldCheck, requiresSession: true, adminOnly: true },
+  { href: "/admin/estado-produccion", label: "Estado", shortLabel: "Estado", icon: CheckSquare, requiresSession: true, adminOnly: true },
+  { href: "/admin/reportes", label: "Reportes", shortLabel: "Reportes", icon: BarChart3, requiresSession: true, adminOnly: true },
   { href: "/mi-cuenta", label: "Mi cuenta", shortLabel: "Cuenta", icon: UserRound, requiresSession: true },
 ];
 
@@ -67,7 +83,8 @@ export function AppNavigation() {
   }, [hasSession, profile?.role]);
 
   const mobileItems = useMemo(() => {
-    const baseItems = canAccessAdmin(profile?.role ?? null) ? staffMobileNavItems : studentMobileNavItems;
+    const role = profile?.role ?? null;
+    const baseItems = !hasSession ? visitorMobileNavItems : role === "admin" || role === "superadmin" ? adminMobileNavItems : role === "librarian" ? librarianMobileNavItems : studentMobileNavItems;
     return baseItems.filter((item) => (!item.requiresSession || hasSession) && (!item.adminOnly || canAccessAdmin(profile?.role ?? null)));
   }, [hasSession, profile?.role]);
 
