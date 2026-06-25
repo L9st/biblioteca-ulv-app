@@ -53,6 +53,7 @@ export type CatalogStatsResult<T> = { data: T; error: string | null };
 type RawCatalogSearchEvent = {
   id: string;
   query: string;
+  normalized_query: string | null;
   search_type: string;
   source: string | null;
   user_id: string | null;
@@ -83,6 +84,12 @@ function startOfToday() {
   return date;
 }
 
+function endOfDay(date: Date) {
+  const endDate = new Date(date);
+  endDate.setHours(23, 59, 59, 999);
+  return endDate;
+}
+
 function getDateRange(filters: CatalogStatsFilters): { from: string | null; to: string | null } {
   if (filters.period === "all") return { from: null, to: null };
 
@@ -93,12 +100,17 @@ function getDateRange(filters: CatalogStatsFilters): { from: string | null; to: 
   }
 
   const fromDate = startOfToday();
+  let toDate = endOfDay(fromDate);
   if (filters.period === "week") {
     const day = fromDate.getDay();
     fromDate.setDate(fromDate.getDate() - (day === 0 ? 6 : day - 1));
+    toDate = endOfDay(new Date());
   }
-  if (filters.period === "month") fromDate.setDate(1);
-  return { from: fromDate.toISOString(), to: null };
+  if (filters.period === "month") {
+    fromDate.setDate(1);
+    toDate = new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 0, 23, 59, 59, 999);
+  }
+  return { from: fromDate.toISOString(), to: toDate.toISOString() };
 }
 
 function applyDateFilters<T>(query: T, filters: CatalogStatsFilters): T {
@@ -112,7 +124,7 @@ function applyDateFilters<T>(query: T, filters: CatalogStatsFilters): T {
 async function getCatalogSearchEvents(filters: CatalogStatsFilters): Promise<CatalogStatsResult<RawCatalogSearchEvent[]>> {
   let query = supabase
     .from("catalog_search_events")
-    .select("id, query, search_type, source, user_id, koha_url, created_at")
+    .select("id, query, normalized_query, search_type, source, user_id, koha_url, created_at")
     .order("created_at", { ascending: false })
     .limit(5000);
 
@@ -122,6 +134,10 @@ async function getCatalogSearchEvents(filters: CatalogStatsFilters): Promise<Cat
   const { data, error } = await query;
   if (error) return { data: [], error: getCatalogStatsError(error.message) };
   return { data: (data ?? []) as RawCatalogSearchEvent[], error: null };
+}
+
+function getEventQuery(event: RawCatalogSearchEvent) {
+  return event.normalized_query?.trim() || event.query.trim();
 }
 
 async function getSavedItems(filters: CatalogStatsFilters): Promise<CatalogStatsResult<RawSavedItemStat[]>> {
@@ -140,7 +156,7 @@ export async function getCatalogStatsSummary(filters: CatalogStatsFilters): Prom
   return {
     data: {
       totalSearches: events.length,
-      uniqueQueries: new Set(events.map((event) => event.query)).size,
+      uniqueQueries: new Set(events.map(getEventQuery)).size,
       authenticatedSearches: events.filter((event) => Boolean(event.user_id)).length,
       anonymousSearches: events.filter((event) => !event.user_id).length,
       savedItems: savedItems.length,
@@ -155,9 +171,10 @@ export async function getTopCatalogSearches(filters: CatalogStatsFilters): Promi
   const byQuery = new Map<string, TopCatalogSearch>();
 
   result.data.forEach((event) => {
-    const current = byQuery.get(event.query);
+    const query = getEventQuery(event);
+    const current = byQuery.get(query);
     if (!current) {
-      byQuery.set(event.query, { query: event.query, total: 1, lastSearchedAt: event.created_at });
+      byQuery.set(query, { query, total: 1, lastSearchedAt: event.created_at });
       return;
     }
     current.total += 1;
@@ -199,7 +216,7 @@ export async function getRecentCatalogSearches(filters: CatalogStatsFilters): Pr
   return {
     data: result.data.slice(0, 20).map((event) => ({
       id: event.id,
-      query: event.query,
+      query: getEventQuery(event),
       searchType: normalizeSearchType(event.search_type),
       source: event.source ?? "catalog",
       userId: event.user_id,

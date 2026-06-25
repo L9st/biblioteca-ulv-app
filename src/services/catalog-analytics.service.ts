@@ -29,15 +29,12 @@ export async function registerCatalogSearchEvent(input: {
   const kohaUrl = input.kohaUrl.trim();
   if (!query || !kohaUrl) return;
 
-  const { data } = await supabase.auth.getUser();
-
-  const { error } = await supabase.from("catalog_search_events").insert({
-    user_id: data.user?.id ?? null,
-    query,
-    search_type: normalizeSearchType(input.searchType),
-    koha_url: kohaUrl,
-    source: input.source ?? "catalog",
+  const { error } = await supabase.rpc("register_catalog_search_event", {
+    p_query: query,
+    p_search_type: normalizeSearchType(input.searchType),
+    p_koha_url: kohaUrl,
+    p_source: input.source ?? "catalog",
   });
 
-  if (error) console.error("No se pudo registrar estadística de búsqueda de catálogo:", error.message);
+  if (error) console.warn("No se pudo registrar estadística de catálogo:", error.message);
 }

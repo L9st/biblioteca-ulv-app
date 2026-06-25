@@ -138,6 +138,9 @@ export function AdminCatalogStatsPanel() {
     setSavedStats(savedResult.data);
     setRecentSearches(recentResult.data);
     setFeedback(summaryResult.error ?? topResult.error ?? typeResult.error ?? dailyResult.error ?? savedResult.error ?? recentResult.error);
+    if (process.env.NODE_ENV === "development") {
+      console.log("Catalog stats summary:", summaryResult.data);
+    }
     setIsLoading(false);
     setIsRefreshing(false);
   }
@@ -222,7 +225,7 @@ export function AdminCatalogStatsPanel() {
         ].map(([label, value]) => <Card key={label} className="p-4"><p className="text-sm font-bold text-slate-500">{label}</p><p className="mt-2 text-3xl font-black text-ulv-blue">{value}</p></Card>)}
       </section>
 
-      {!hasChartData ? <Card><p className="text-sm font-semibold text-slate-600">Aún no hay datos suficientes para mostrar estadísticas.</p></Card> : null}
+      {!hasChartData ? <Card><p className="text-sm font-semibold text-slate-600">Aún no hay búsquedas registradas.</p></Card> : null}
 
       <section className="grid gap-5 xl:grid-cols-2">
         <Card>

@@ -73,8 +73,8 @@ export function CatalogPanel() {
       const url = buildKohaSearchUrl({ query, type });
       const cleanQuery = query.trim();
       setLastSearch({ query: cleanQuery, type, url });
-      openExternalUrl(url);
       void registerCatalogSearchEvent({ query: cleanQuery, searchType: type, kohaUrl: url, source: "catalog" });
+      openExternalUrl(url);
       if (hasSession) void createCatalogSearchHistory({ query: cleanQuery, search_type: type, koha_url: url });
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "No se pudo abrir el catálogo Koha.");
@@ -101,6 +101,7 @@ export function CatalogPanel() {
     }
 
     setIsSavingSearch(true);
+    void registerCatalogSearchEvent({ query: searchToSave.query, searchType: searchToSave.type, kohaUrl: searchToSave.url, source: "saved_resource" });
     const result = await createCatalogSavedItem({
       title: `Búsqueda: ${searchToSave.query}`,
       author: null,

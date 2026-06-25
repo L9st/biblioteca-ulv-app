@@ -120,6 +120,16 @@ export async function createCatalogSavedItem(input: CreateCatalogSavedItemInput)
   if (!kohaUrl) return { data: null, error: "La URL de Koha es obligatoria." };
   if (!isValidHttpUrl(kohaUrl)) return { data: null, error: "La URL debe iniciar con http:// o https://." };
 
+  const { data: existingItem, error: existingError } = await supabase
+    .from("catalog_saved_items")
+    .select(savedItemFields)
+    .eq("user_id", userId)
+    .eq("koha_url", kohaUrl)
+    .maybeSingle();
+
+  if (existingError) return { data: null, error: catalogItemsError(existingError.message) };
+  if (existingItem) return { data: normalizeSavedItem(existingItem as CatalogSavedItem), error: null };
+
   const { data, error } = await supabase
     .from("catalog_saved_items")
     .insert({
