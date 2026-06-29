@@ -5,7 +5,6 @@ import Link from "next/link";
 import { CalendarCheck, ShieldAlert } from "lucide-react";
 import { Badge, getStatusBadgeTone } from "@/app/ui/Badge";
 import { Card } from "@/app/ui/Card";
-import { DropdownSelect } from "@/app/ui/DropdownSelect";
 import { supabase } from "@/lib/supabase";
 import { OFFLINE_ACTION_MESSAGE } from "@/lib/offline";
 import {
@@ -13,12 +12,14 @@ import {
   buildDaySchedule,
   createSpaceReservation,
   getMySpaceReservations,
+  getReservationLibraries,
   getReservableSpaces,
   getReservationsForDate,
   getReservationValidationSettings,
   getReservationStatusLabel,
   validateReservationRequest,
   type ReservationCalendarItem,
+  type ReservationLibrary,
   type ReservationValidationSettings,
   type ReservableSpace,
   type SpaceReservation,
@@ -66,9 +67,10 @@ export function ReservationsPanel() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [libraries, setLibraries] = useState<ReservationLibrary[]>([]);
   const [spaces, setSpaces] = useState<ReservableSpace[]>([]);
   const [reservations, setReservations] = useState<SpaceReservation[]>([]);
-  const [libraryId, setLibraryId] = useState("all");
+  const [libraryId, setLibraryId] = useState("");
   const [spaceId, setSpaceId] = useState("");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
@@ -97,19 +99,26 @@ export function ReservationsPanel() {
       return;
     }
 
-    const [spacesResult, reservationsResult] = await Promise.all([
+    const [librariesResult, spacesResult, reservationsResult] = await Promise.all([
+      getReservationLibraries(),
       getReservableSpaces(),
       getMySpaceReservations(),
     ]);
 
+    setLibraries(librariesResult.data);
     setSpaces(spacesResult.data);
     setReservations(reservationsResult.data);
-    setSpaceId((current) => current || spacesResult.data[0]?.id || "");
+    setLibraryId((current) => {
+      if (librariesResult.data.length === 0) return "";
+      const selectedExists = librariesResult.data.some((library) => library.id === current);
+      return current && selectedExists ? current : librariesResult.data[0].id;
+    });
+    setSpaceId((current) => (current && spacesResult.data.some((space) => space.id === current) ? current : ""));
 
-    if (spacesResult.error || reservationsResult.error) {
+    if (librariesResult.error || spacesResult.error || reservationsResult.error) {
       setFeedback({
         type: "error",
-        message: spacesResult.error ?? reservationsResult.error ?? "No se pudieron cargar las reservas.",
+        message: librariesResult.error ?? spacesResult.error ?? reservationsResult.error ?? "No se pudieron cargar las reservas.",
       });
     }
 
@@ -130,15 +139,7 @@ export function ReservationsPanel() {
     return () => window.clearTimeout(timeout);
   }, [feedback]);
 
-  const libraries = Array.from(
-    new Map(
-      spaces.map((space) => [
-        space.libraries?.id ?? space.library_id,
-        space.libraries ?? { id: space.library_id, name: "Biblioteca", code: "" },
-      ]),
-    ).values(),
-  );
-  const filteredSpaces = libraryId === "all" ? spaces : spaces.filter((space) => space.library_id === libraryId);
+  const filteredSpaces = libraryId ? spaces.filter((space) => space.library_id === libraryId) : [];
   const calendarSpaces = spaces.filter((space) => (calendarLibraryId === "all" || space.library_id === calendarLibraryId) && (calendarSpaceId === "all" || space.id === calendarSpaceId));
   const reserveDate = startAt ? startAt.slice(0, 10) : todayInputValue();
   const selectedSpace = spaces.find((space) => space.id === spaceId) ?? null;
@@ -171,10 +172,30 @@ export function ReservationsPanel() {
     setIsCalendarLoading(false);
   }
 
+  function handleLibraryChange(nextLibraryId: string) {
+    setLibraryId(nextLibraryId);
+    setSpaceId("");
+    setReservationSettings(null);
+    setCalendarReservations([]);
+    setFeedback(null);
+  }
+
+  function handleCalendarLibraryChange(nextLibraryId: string) {
+    setCalendarLibraryId(nextLibraryId);
+    setCalendarSpaceId("all");
+    setCalendarReservations([]);
+    setFeedback(null);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const startDate = new Date(startAt);
     const endDate = new Date(endAt);
+
+    if (!libraryId) {
+      setFeedback({ type: "error", message: "Selecciona una biblioteca para continuar." });
+      return;
+    }
 
     if (!spaceId) {
       setFeedback({ type: "error", message: "Selecciona un espacio." });
@@ -322,27 +343,29 @@ export function ReservationsPanel() {
             </div>
 
             <form onSubmit={handleSubmit} className="grid w-full max-w-full grid-cols-1 gap-4">
-              <div className="w-full max-w-full overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5 sm:p-4">
-                <DropdownSelect
-                  label="Biblioteca"
-                  options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]}
-                  value={libraryId}
-                  onChange={(value) => {
-                    setLibraryId(value);
-                    setSpaceId("");
-                  }}
-                  emptyLabel="Todas las bibliotecas"
-                />
-              </div>
+              <label className="relative z-10 block w-full">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Biblioteca</span>
+                <select value={libraryId} onChange={(event) => handleLibraryChange(event.target.value)} className={fieldClass} disabled={libraries.length === 0}>
+                  <option value="">Selecciona una biblioteca</option>
+                  {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
+                </select>
+                {libraries.length === 0 ? <p className="mt-2 text-xs text-slate-500">No hay bibliotecas disponibles para reservar.</p> : null}
+                {process.env.NODE_ENV === "development" ? (
+                  <pre className="mt-2 rounded-xl bg-slate-50 p-2 text-xs text-slate-500">
+                    {JSON.stringify({ librariesCount: libraries.length, selectedLibraryId: libraryId, selectedSpaceId: spaceId }, null, 2)}
+                  </pre>
+                ) : null}
+              </label>
 
               <label>
-                <span className="text-sm font-bold text-ulv-blue">Espacio</span>
-                <select required value={spaceId} onChange={(event) => setSpaceId(event.target.value)} className={fieldClass}>
+                <span className="mb-1 block text-sm font-medium text-slate-700">Espacio</span>
+                <select required value={spaceId} onChange={(event) => { setSpaceId(event.target.value); setReservationSettings(null); setCalendarReservations([]); }} className={fieldClass} disabled={!libraryId || filteredSpaces.length === 0}>
                   <option value="">Selecciona un espacio</option>
                   {filteredSpaces.map((space) => (
                     <option key={space.id} value={space.id}>{space.name} - {space.libraries?.name}</option>
                   ))}
                 </select>
+                {libraryId && filteredSpaces.length === 0 ? <p className="mt-2 text-xs text-slate-500">No hay espacios reservables disponibles para esta biblioteca.</p> : null}
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -554,7 +577,7 @@ export function ReservationsPanel() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"><DropdownSelect label="Biblioteca" options={[{ label: "Todas las bibliotecas", value: "all" }, ...libraries.map((library) => ({ label: library.name, value: library.id }))]} value={calendarLibraryId} onChange={(value) => { setCalendarLibraryId(value); setCalendarSpaceId("all"); }} emptyLabel="Todas las bibliotecas" /></div>
+            <label className="relative z-10 block w-full"><span className="mb-1 block text-sm font-medium text-slate-700">Biblioteca</span><select value={calendarLibraryId} onChange={(event) => handleCalendarLibraryChange(event.target.value)} className={fieldClass} disabled={libraries.length === 0}><option value="all">Todas las bibliotecas</option>{libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}</select></label>
             <label><span className="text-sm font-bold text-ulv-blue">Espacio</span><select value={calendarSpaceId} onChange={(event) => setCalendarSpaceId(event.target.value)} className={fieldClass}><option value="all">Todos los espacios</option>{spaces.filter((space) => calendarLibraryId === "all" || space.library_id === calendarLibraryId).map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label>
             <label><span className="text-sm font-bold text-ulv-blue">Fecha</span><input type="date" value={calendarDate} onChange={(event) => setCalendarDate(event.target.value)} className={fieldClass} /></label>
             <label><span className="text-sm font-bold text-ulv-blue">Estado</span><select value={calendarStatus} onChange={(event) => setCalendarStatus(event.target.value as CalendarStatusFilter)} className={fieldClass}><option value="all">Todas</option><option value="approved">Aprobadas</option><option value="pending">Pendientes</option></select></label>

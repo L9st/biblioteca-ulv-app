@@ -17,6 +17,12 @@ export type ReservableSpace = {
   libraries: { id: string; name: string; code: string } | null;
 };
 
+export type ReservationLibrary = {
+  id: string;
+  name: string;
+  code: string;
+};
+
 export type SpaceReservation = {
   id: string;
   user_id: string;
@@ -273,6 +279,17 @@ export async function getReservableSpaces(): Promise<ReservationResult<Reservabl
   const { data, error } = await supabase.from("library_spaces").select("id, library_id, name, slug, description, capacity, location_hint, is_reservable, status, libraries (id, name, code)").eq("status", "active").eq("is_reservable", true).order("name", { ascending: true });
   if (error) return { data: [], error: getReservationErrorMessage(error.message) };
   return { data: ((data ?? []) as RawReservableSpace[]).map(normalizeSpace), error: null };
+}
+
+export async function getReservationLibraries(): Promise<ReservationResult<ReservationLibrary[]>> {
+  const { data, error } = await supabase
+    .from("libraries")
+    .select("id, name, code")
+    .eq("status", "active")
+    .order("name", { ascending: true });
+
+  if (error) return { data: [], error: "No se pudieron cargar las bibliotecas disponibles." };
+  return { data: (data ?? []) as ReservationLibrary[], error: null };
 }
 
 export async function getMySpaceReservations(): Promise<ReservationResult<SpaceReservation[]>> {
